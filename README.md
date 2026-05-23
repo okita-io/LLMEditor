@@ -1,4 +1,4 @@
-# **📘 Project Spec: “FeatherEdit” (v0.1)**  
+# **📘 Project Spec: LLIMEdit (v0.1)**  
 *A minimal cross‑platform text editor with LM Studio integration.*
 
 ---
