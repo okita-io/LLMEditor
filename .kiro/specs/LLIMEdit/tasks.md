@@ -1,4 +1,4 @@
-# Implementation Plan: LLIMEdit (featheredit)
+# Implementation Plan: LLIMEdit (LLIMEdit)
 
 ## Overview
 

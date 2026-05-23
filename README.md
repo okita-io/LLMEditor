@@ -81,7 +81,7 @@ Create a **super lightweight**, **open‑source**, **cross‑platform** (Windows
 ## **4. UI Layout (v0.1)**
 
 ### **Window**
-- Title bar: “FeatherEdit”
+- Title bar: “LLIMEdit”
 - Menu bar:
   - File → Open, Save, Save As, Quit
   - Edit → Undo, Redo, Cut, Copy, Paste

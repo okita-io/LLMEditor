@@ -954,7 +954,7 @@ Targeted module-level coverage in `src-tauri/src/`:
 Implemented with [`proptest`](https://crates.io/crates/proptest) on the Rust side and [`fast-check`](https://github.com/dubzzz/fast-check) on the frontend side. Each property test is configured for a minimum of 100 cases (proptest's default of 256 is fine; explicit `#![proptest_config(ProptestConfig { cases: 256, .. })]` on each `proptest!` block) and is tagged with a comment naming the property and feature so failures map back to the design.
 
 ```rust
-// Feature: featheredit, Property 1: Settings serialize-then-parse round-trip
+// Feature: LLIMEdit, Property 1: Settings serialize-then-parse round-trip
 proptest! {
     #![proptest_config(ProptestConfig { cases: 256, .. ProptestConfig::default() })]
     #[test]
