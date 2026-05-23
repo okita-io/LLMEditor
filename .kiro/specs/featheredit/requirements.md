@@ -21,6 +21,9 @@ LLIMEdit is a minimal, cross-platform (macOS and Windows) plain-text editor buil
 - **Status_Bar**: The fixed bar at the bottom of the window displaying file path, character count, and model name.
 - **Settings_Modal**: The modal dialog presenting editable settings fields.
 - **OS_Config_Dir**: The OS-standard per-user configuration directory (`~/Library/Application Support/LLIMEdit/` on macOS, `%APPDATA%\LLIMEdit\` on Windows).
+- **Edit_Group**: A sequence of Buffer mutations grouped together such that one Undo invocation reverts every mutation in the sequence and one Redo invocation reapplies every mutation in the sequence.
+- **Undo_Stack**: An in-memory ordered collection of Edit_Groups maintained by the Editor, where the most recently committed Edit_Group is the topmost element and Undo operates on the topmost element.
+- **Redo_Stack**: An in-memory ordered collection of Edit_Groups maintained by the Editor, populated by Edit_Groups removed from the Undo_Stack via Undo and consumed by Redo to reapply them to the Buffer.
 
 ## Requirements
 
@@ -130,7 +133,7 @@ LLIMEdit is a minimal, cross-platform (macOS and Windows) plain-text editor buil
 #### Acceptance Criteria
 
 1. WHILE no Stream is active, WHEN the user types a printable character or presses a text-modifying key in the Editor, THE Editor SHALL update the Buffer to reflect the change before the next user input event is processed.
-2. WHILE no Stream is active, WHEN the user invokes Undo or Redo, THE Editor SHALL apply the host platform's default undo or redo behavior to the Buffer.
+2. WHILE no Stream is active, WHEN the user invokes Undo or Redo, THE Editor SHALL update the Buffer, the Undo_Stack, and the Redo_Stack per the semantics defined in Requirement 18.
 3. WHILE no Stream is active, WHEN the user invokes Cut or Copy with a selection of one or more Unicode code points, THE Editor SHALL apply the host platform's default clipboard behavior using the current selection.
 4. WHILE no Stream is active, IF the user invokes Cut or Copy with a zero-length selection, THEN THE Editor SHALL leave the Buffer and the system clipboard unchanged.
 5. WHILE no Stream is active, WHEN the user invokes Paste, THE Editor SHALL apply the host platform's default paste behavior, replacing the current selection with the clipboard text content if a selection exists, otherwise inserting the clipboard text content at the cursor position.
@@ -211,6 +214,7 @@ LLIMEdit is a minimal, cross-platform (macOS and Windows) plain-text editor buil
 6. WHEN a `tauri://llm-complete` event with no error reason is received, THE LLIMEdit SHALL restore the Editor to writable.
 7. WHEN the user presses the Escape key while a Stream is active, THE LLM_Client SHALL close the underlying HTTP connection and emit a `tauri://llm-complete` event within 1 second of the keypress, and THE Editor SHALL retain all token payloads already applied to the Buffer.
 8. WHILE a Stream is active, THE LLM_Client SHALL maintain at most one in-flight HTTP request to the LM_Studio_Endpoint.
+9. WHEN a Stream begins, THE Editor SHALL begin a single Edit_Group that accumulates every Buffer mutation produced by `tauri://llm-token` events received during that Stream regardless of the active `replace_mode`, and WHEN that Stream terminates by the end-of-stream signal per criterion 5, by user cancellation per criterion 7, or by any error reason defined in Requirement 14, THE Editor SHALL push that Edit_Group onto the Undo_Stack as a single entry.
 
 ### Requirement 14: LM Studio Error Handling
 
@@ -264,3 +268,31 @@ LLIMEdit is a minimal, cross-platform (macOS and Windows) plain-text editor buil
 5. THE LLIMEdit SHALL NOT write the Buffer to disk on any trigger other than a user-invoked Save or Save As action, including but not limited to timer-based, idle-based, focus-change-based, or interval-based triggers.
 6. THE LLIMEdit SHALL NOT render Markdown, HTML, or any other formatted preview of the Buffer, and SHALL render the Buffer as plain text only.
 7. THE LLIMEdit SHALL NOT provide any UI control that toggles a preview view or alternative rendering mode for the Buffer.
+
+### Requirement 18: Undo and Redo Stack
+
+**User Story:** As a user, I want a predictable Undo and Redo behavior that treats a streamed LLM response as a single step, so that I can revert or restore an entire model response with one keystroke and so that the editor's history does not drift from what I see on screen.
+
+#### Acceptance Criteria
+
+1. THE Editor SHALL maintain an in-memory Undo_Stack of Edit_Groups and an in-memory Redo_Stack of Edit_Groups, both initialized to empty when LLIMEdit is launched.
+2. WHILE no Stream is active, WHEN the user types a printable character keystroke in the Editor and the most recent Edit_Group on the Undo_Stack was produced by typed-input keystrokes, the time elapsed since the previous keystroke applied to that Edit_Group is less than or equal to 1000 milliseconds, the Editor cursor position has not been moved between that previous keystroke and the current keystroke by any cursor-moving input (including arrow keys, Home, End, Page Up, Page Down, mouse click, or programmatic selection change), and the current keystroke is not the Enter key, THE Editor SHALL append the resulting Buffer mutation to that most recent Edit_Group.
+3. WHILE no Stream is active, WHEN the user types a printable character keystroke in the Editor and the conditions in criterion 2 are not all satisfied, THE Editor SHALL begin a new Edit_Group on the Undo_Stack containing the resulting Buffer mutation.
+4. WHILE no Stream is active, WHEN the user presses the Enter key in the Editor, THE Editor SHALL begin a new Edit_Group on the Undo_Stack containing the resulting Buffer mutation, and any subsequent typed-input keystroke SHALL be evaluated against criterion 2 against this new Edit_Group rather than any earlier Edit_Group.
+5. WHILE no Stream is active, WHEN the user invokes Paste and the Editor applies the clipboard text content to the Buffer per Requirement 8 criterion 5, THE Editor SHALL push a single Edit_Group onto the Undo_Stack containing exactly the Buffer mutation produced by that paste invocation.
+6. WHILE no Stream is active, WHEN the user invokes Cut on a non-zero-length selection per Requirement 8 criterion 3, THE Editor SHALL push a single Edit_Group onto the Undo_Stack containing exactly the Buffer mutation that removed the selected text.
+7. WHEN a Stream begins, THE Editor SHALL allocate a single Edit_Group dedicated to that Stream, and every Buffer mutation produced by a `tauri://llm-token` event received during that Stream SHALL be appended to that Edit_Group regardless of the active `replace_mode`.
+8. WHEN a Stream terminates by the end-of-stream signal defined in Requirement 13 criterion 5, THE Editor SHALL push the Stream's Edit_Group onto the Undo_Stack as a single entry such that one subsequent Undo invocation reverts every Buffer mutation produced during that Stream.
+9. WHEN a Stream terminates by user cancellation as defined in Requirement 13 criterion 7, THE Editor SHALL push the Stream's Edit_Group onto the Undo_Stack as a single entry containing the Buffer mutations produced by every `tauri://llm-token` event received before the cancellation, such that one subsequent Undo invocation reverts every Buffer mutation produced before the cancellation.
+10. WHEN a Stream terminates by any error reason defined in Requirement 14 and one or more `tauri://llm-token` events were received during that Stream, THE Editor SHALL push the Stream's Edit_Group onto the Undo_Stack as a single entry such that one subsequent Undo invocation reverts every Buffer mutation produced before the error.
+11. WHILE no Stream is active, WHEN the user invokes Undo and the Undo_Stack contains at least one Edit_Group, THE Editor SHALL remove the topmost Edit_Group from the Undo_Stack, revert every Buffer mutation in that Edit_Group in reverse order so that the Buffer matches the state immediately before the Edit_Group was applied, and push that Edit_Group onto the Redo_Stack.
+12. WHILE no Stream is active, IF the user invokes Undo and the Undo_Stack is empty, THEN THE Editor SHALL leave the Buffer, the Undo_Stack, and the Redo_Stack unchanged.
+13. WHILE no Stream is active, WHEN the user invokes Redo and the Redo_Stack contains at least one Edit_Group, THE Editor SHALL remove the topmost Edit_Group from the Redo_Stack, reapply every Buffer mutation in that Edit_Group in original order, and push that Edit_Group onto the Undo_Stack.
+14. WHILE no Stream is active, IF the user invokes Redo and the Redo_Stack is empty, THEN THE Editor SHALL leave the Buffer, the Undo_Stack, and the Redo_Stack unchanged.
+15. WHEN the Editor pushes a new Edit_Group onto the Undo_Stack from any source other than Redo (including typed-input grouping per criteria 2 through 4, Paste per criterion 5, Cut per criterion 6, or Stream completion per criteria 8 through 10), THE Editor SHALL clear the Redo_Stack of all entries.
+16. WHEN the File_Service successfully reads a selected file via the Open File action and the Editor replaces the Buffer per Requirement 4 criterion 4, THE Editor SHALL clear the Undo_Stack of all entries and clear the Redo_Stack of all entries.
+17. WHEN the user invokes the Save File action per Requirement 5 or the Save As action per Requirement 6, THE Editor SHALL leave the Undo_Stack and the Redo_Stack unchanged regardless of whether the underlying File_Service write succeeds or fails.
+18. THE Editor SHALL bound the Undo_Stack to a maximum capacity of 200 Edit_Groups and SHALL bound the Redo_Stack to a maximum capacity of 200 Edit_Groups.
+19. WHEN the Editor would push a new Edit_Group onto the Undo_Stack and the Undo_Stack already contains 200 Edit_Groups, THE Editor SHALL remove the oldest (bottom-most) Edit_Group from the Undo_Stack before pushing the new Edit_Group such that the resulting Undo_Stack contains exactly 200 Edit_Groups.
+20. WHEN the Editor would push a new Edit_Group onto the Redo_Stack via Undo per criterion 11 and the Redo_Stack already contains 200 Edit_Groups, THE Editor SHALL remove the oldest (bottom-most) Edit_Group from the Redo_Stack before pushing the new Edit_Group such that the resulting Redo_Stack contains exactly 200 Edit_Groups.
+21. WHILE a Stream is active, IF the user invokes Undo or Redo, THEN THE Editor SHALL leave the Buffer, the Undo_Stack, and the Redo_Stack unchanged, consistent with the read-only behavior defined in Requirement 12 criterion 6.
