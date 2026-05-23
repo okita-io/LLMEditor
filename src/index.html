@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLMEditor</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="left-pane">
+        <div class="controls">
+          <label>LLM API Address <input id="apiAddress" value="http://localhost:1234" /></label>
+          <button id="refreshModels">Refresh models</button>
+          <div id="models"></div>
+          <label>Theme
+            <select id="themeMode">
+              <option value="auto">Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <div id="contextIndicator">Context: 0 chars</div>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <textarea id="chatInput" placeholder="Ask the agent..."></textarea>
+          <button id="sendPrompt">Send</button>
+        </div>
+      </aside>
+
+      <main class="right-pane">
+        <div class="file-controls">
+          <button id="newFile">New</button>
+          <button id="openFile">Open</button>
+          <button id="saveFile">Save</button>
+          <input id="filePath" placeholder="/path/to/file.txt" />
+        </div>
+        <div id="columnRuler" class="column-ruler"></div>
+        <div class="editor-wrap">
+          <pre id="lineNumbers" class="line-numbers">1</pre>
+          <textarea id="editor" spellcheck="false"></textarea>
+        </div>
+        <footer id="status">Ln 1, Col 1</footer>
+      </main>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
