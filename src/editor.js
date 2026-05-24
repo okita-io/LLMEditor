@@ -813,6 +813,38 @@ export async function _promptDirtyBuffer() {
 export async function sendToLLM() {
   if (!bufferEl) return;
 
+  const value = bufferEl.value;
+  const selStart =
+    typeof bufferEl.selectionStart === "number" ? bufferEl.selectionStart : 0;
+  const selEnd =
+    typeof bufferEl.selectionEnd === "number" ? bufferEl.selectionEnd : selStart;
+  const text =
+    selStart !== selEnd ? value.slice(selStart, selEnd) : value;
+
+  await _sendPromptToLLM(text);
+}
+
+/**
+ * Send a chat instruction to the model. Uses the provided prompt text
+ * instead of the document buffer or selection.
+ *
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+export async function sendChatMessage(text) {
+  if (!bufferEl) return;
+  const prompt = typeof text === "string" ? text.trim() : "";
+  await _sendPromptToLLM(prompt);
+}
+
+/**
+ * Shared LLM send path for menu/shortcut and chat panel invocations.
+ *
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+async function _sendPromptToLLM(text) {
+
   // Req 12.7: a second invocation while a stream is active is
   // dropped with the documented status message.
   if (streamActive) {
@@ -827,21 +859,6 @@ export async function sendToLLM() {
     _emitStatus(_errorMessage(err));
     return;
   }
-
-  // Resolve the user-message content per Req 12.1 / 12.2. The DOM
-  // reports `selectionStart` / `selectionEnd` in UTF-16 code units;
-  // `slice` operates on the same units, so passing them straight
-  // through is correct here. Req 12.3 measures emptiness in Unicode
-  // code points, but a UTF-16 slice of length 0 is also a code-point
-  // slice of length 0 (the only way for a UTF-16 slice to be empty
-  // is for it to actually be empty).
-  const value = bufferEl.value;
-  const selStart =
-    typeof bufferEl.selectionStart === "number" ? bufferEl.selectionStart : 0;
-  const selEnd =
-    typeof bufferEl.selectionEnd === "number" ? bufferEl.selectionEnd : selStart;
-  const text =
-    selStart !== selEnd ? value.slice(selStart, selEnd) : value;
 
   // Req 12.3: 0 code points -> "Nothing to send", no backend call.
   if (text.length === 0) {
@@ -867,6 +884,8 @@ export async function sendToLLM() {
     return;
   }
 
+  _emitChatStart(text);
+
   // Req 12.6: disable the textarea so keyboard and paste input cannot
   // modify the Buffer while the stream is in flight. The
   // `tauri://llm-complete` handler re-enables it.
@@ -885,6 +904,7 @@ export async function sendToLLM() {
     _endStream();
     bufferEl.disabled = false;
     _emitStatus(_errorMessage(err));
+    _emitChatComplete();
   }
 }
 
@@ -912,6 +932,7 @@ export function _handleStreamToken(fragment) {
   if (!bufferEl || !streamActive || streamAnchor === null) return;
   if (typeof fragment !== "string" || fragment.length === 0) return;
   applyLLMResponse(streamAnchor.mode, fragment);
+  _emitChatToken(fragment);
 }
 
 /**
@@ -945,6 +966,7 @@ export function _handleStreamComplete(payload) {
     // the Status_Bar so the bar returns to its idle text.
     _emitStatus("");
   }
+  _emitChatComplete();
 }
 
 /**
@@ -966,6 +988,54 @@ function _emitStatus(message) {
     );
   } catch {
     /* ignore — status surfacing is best-effort */
+  }
+}
+
+/**
+ * @param {string} text
+ * @returns {void}
+ */
+function _emitChatStart(text) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-start", { detail: { text } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {string} fragment
+ * @returns {void}
+ */
+function _emitChatToken(fragment) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-token", { detail: { fragment } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @returns {void}
+ */
+function _emitChatComplete() {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(new CustomEvent("editor:chat-complete"));
+  } catch {
+    /* ignore */
   }
 }
 

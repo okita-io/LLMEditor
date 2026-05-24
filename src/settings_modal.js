@@ -330,7 +330,7 @@ function ensureModalBuilt() {
   root.appendChild(content);
 
   const heading = document.createElement("h2");
-  heading.textContent = "Settings";
+  heading.textContent = "AI Settings";
   content.appendChild(heading);
 
   const form = document.createElement("form");

@@ -2,16 +2,30 @@
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 okita.io
  *
- * LLIMEdit — uniform plain-text style. No syntax colorization, no
- * themes, no font controls (Req 17.2, 17.3, 17.6, 17.7). One
- * stylesheet, kept intentionally flat.
- *
- * Layout: full-window flex column with a fixed menu bar at the top, the
- * <textarea> consuming the remaining vertical space, and a fixed status
- * bar at the bottom (Req 1.1, 17.1). Monospace text in the buffer so a
- * fixed-width column shows up the way the user expects in a plain-text
- * editor.
+ * LLIMEdit — dark editor shell matching designs/LLIMEdit-design.pen
  */
+
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-status: #007acc;
+  --border: #3c3c3c;
+  --input-bg: #3c3c3c;
+  --modal-bg: #2d2d2d;
+  --accent: #569cd6;
+  --text-primary: #d4d4d4;
+  --text-muted: #858585;
+  --text-menu: #cccccc;
+  --warning: #dcdcaa;
+  --font-ui: Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --line-height-editor: 1.6;
+  --editor-font-size: 14px;
+  --gutter-width: 48px;
+}
 
 * {
   box-sizing: border-box;
@@ -23,12 +37,11 @@ body {
   padding: 0;
   height: 100%;
   width: 100%;
-  background: #ffffff;
-  color: #111111;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
-  font-size: 14px;
-  line-height: 1.4;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--editor-font-size);
+  line-height: var(--line-height-editor);
 }
 
 body {
@@ -37,112 +50,411 @@ body {
   overflow: hidden;
 }
 
-/* ----------------------------------------------------------------------
- * Menu bar (Req 2). Static markup at this point; Task 22 lands the
- * dropdown reveal and keyboard navigation. The current rendering shows
- * top-level menus inline with their items as a small list to the right.
- * That keeps the bar visible during bootstrap so the disabled-state
- * styling can be inspected at launch.
- * -------------------------------------------------------------------- */
-
-#menu-bar {
+/* Header: menu + settings gear */
+.app-header {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 8px;
-  height: 28px;
-  border-bottom: 1px solid #d0d0d0;
-  background: #f4f4f4;
-  font-size: 13px;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px 0 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
   user-select: none;
 }
 
-.menu {
+#menu-bar {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 24px;
+  padding: 0 12px;
+  height: 100%;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.menu {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .menu-label {
-  font-weight: 600;
+  color: var(--text-menu);
+  cursor: default;
+  padding: 4px 0;
 }
 
 .menu-items {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px 0;
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  z-index: 20;
+  flex-direction: column;
+  gap: 0;
+}
+
+.menu.open .menu-items,
+.menu:focus-within .menu-items {
   display: flex;
-  gap: 6px;
 }
 
 .menu-item {
   cursor: default;
+  padding: 6px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
 }
 
-/* AI menu disabled state (Req 1.3, 2.6, 1.6). The data-disabled
- * attribute is toggled by `menu.js` as the bootstrap progresses; the
- * styling here only dims the text and prevents pointer activation so
- * the visual cue matches the gating Task 22 will enforce in JS. */
+.menu-item:hover {
+  background: var(--input-bg);
+}
+
+.menu-item-shortcut {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 [data-disabled="true"] {
-  color: #aaaaaa;
+  color: var(--text-muted);
   pointer-events: none;
+  opacity: 0.5;
 }
 
-/* ----------------------------------------------------------------------
- * Buffer (Req 8, Req 17). A single <textarea> with monospace text, no
- * theming hooks, soft wrap. The host browser handles caret rendering,
- * IME composition, and clipboard semantics, which is exactly what
- * Req 8.1, 8.3, 8.4, 8.5 want for v0.1.
- * -------------------------------------------------------------------- */
+#settings-button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+#settings-button:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+
+#settings-button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-icon {
+  display: block;
+}
+
+/* Content split */
+#content-split {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#chat-panel {
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  background: var(--bg-secondary);
+}
+
+.chat-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+}
+
+.chat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-model {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.chat-model.streaming {
+  color: var(--warning);
+}
+
+.chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chat-bubble-user {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+}
+
+.chat-bubble-assistant {
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+}
+
+.chat-bubble-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.chat-bubble-user .chat-bubble-label {
+  color: var(--text-muted);
+}
+
+.chat-bubble-assistant .chat-bubble-label {
+  color: var(--accent);
+}
+
+.chat-bubble-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.chat-bubble-assistant .chat-bubble-body.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.chat-input-area {
+  flex: 0 0 auto;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#chat-input {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+#chat-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+#chat-input:disabled {
+  opacity: 0.5;
+}
+
+.chat-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-actions button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#chat-clear {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+#chat-send {
+  border: 0;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+#chat-send:disabled,
+#chat-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#split-divider {
+  flex: 0 0 1px;
+  background: var(--border);
+}
+
+/* Document editor */
+#document-editor {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-primary);
+}
+
+.column-ruler {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 calc(var(--gutter-width) + 8px);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.column-ruler-labels {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: pre;
+  letter-spacing: 0;
+}
+
+.editor-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.line-gutter {
+  flex: 0 0 var(--gutter-width);
+  overflow: hidden;
+  padding: 16px 10px 16px 0;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--editor-font-size);
+  line-height: var(--line-height-editor);
+  color: var(--text-muted);
+  user-select: none;
+  white-space: pre;
+}
+
+.line-gutter .line-active {
+  color: var(--accent);
+  font-weight: 600;
+}
 
 #buffer {
   flex: 1 1 auto;
   width: 100%;
+  min-width: 0;
   margin: 0;
-  padding: 8px 10px;
+  padding: 16px 16px 16px 12px;
   border: 0;
   outline: 0;
   resize: none;
-  background: #ffffff;
-  color: #111111;
+  overflow: auto;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
+  word-break: normal;
   tab-size: 4;
   -moz-tab-size: 4;
 }
 
-/* ----------------------------------------------------------------------
- * Status bar (Req 9). Single line, ellipsis on overflow so a long file
- * path does not push the model name off the right side.
- * -------------------------------------------------------------------- */
+#buffer:disabled {
+  opacity: 0.6;
+}
 
+/* Status bar */
 #status-bar {
   flex: 0 0 auto;
-  height: 22px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  border-top: 1px solid #d0d0d0;
-  background: #f4f4f4;
-  font-size: 12px;
-  color: #333333;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
   user-select: none;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.status-segment {
+  flex: 0 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ----------------------------------------------------------------------
- * Settings_Modal (Req 11). Built lazily by `settings_modal.js` and
- * appended to <body>. The `.modal[hidden]` rule below is the source of
- * truth for visibility — `settings_modal.js` toggles `.hidden` on the
- * root element and never touches inline display.
- * -------------------------------------------------------------------- */
+#status-cursor {
+  flex: 1 1 auto;
+  text-align: center;
+}
 
+.status-model,
+#status-model {
+  color: var(--accent);
+  text-align: right;
+}
+
+.status-dirty {
+  color: var(--warning);
+}
+
+.status-error {
+  color: var(--warning);
+}
+
+/* Settings modal */
 .modal[hidden] {
   display: none;
 }
@@ -150,7 +462,7 @@ body {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -158,40 +470,48 @@ body {
 }
 
 .modal-content {
-  background: #ffffff;
-  padding: 16px;
-  border-radius: 4px;
+  background: var(--modal-bg);
+  padding: 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
   min-width: 480px;
   max-width: 90vw;
-  color: #111111;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .modal-content h2 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .modal-content form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .modal-content label {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 .modal-content input,
 .modal-content select,
 .modal-content textarea {
-  padding: 4px;
-  font-family: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 
@@ -201,13 +521,13 @@ body {
 }
 
 .field-error {
-  color: #c00000;
+  color: var(--warning);
   font-size: 11px;
   min-height: 13px;
 }
 
 .modal-error {
-  color: #c00000;
+  color: var(--warning);
   flex: 1;
   font-size: 12px;
 }
@@ -215,10 +535,29 @@ body {
 .modal-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-top: 8px;
+  justify-content: flex-end;
 }
 
 .modal-footer button {
-  padding: 4px 12px;
+  height: 36px;
+  padding: 0 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modal-footer button[data-action="cancel"] {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.modal-footer button[data-action="save"] {
+  border: 0;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
 }

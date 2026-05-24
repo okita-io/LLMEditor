@@ -87,6 +87,8 @@ import * as editor from "./editor.js";
 import { renderStatusBar, attachToBuffer } from "./status_bar.js";
 import * as settingsModal from "./settings_modal.js";
 import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
+import { attachEditorChrome } from "./editor_chrome.js";
+import * as chat from "./chat.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
 // dropped into the WebView console) can reach it without a separate
@@ -108,6 +110,8 @@ void settingsModal;
 const statusState = {
   model: "",
   error: null,
+  line: 1,
+  column: 1,
 };
 
 /* ------------------------------------------------------------------ */
@@ -201,6 +205,8 @@ function renderStatus() {
     model: statusState.model,
     dirty: editor.isDirty(),
     error: statusState.error,
+    line: statusState.line,
+    column: statusState.column,
   });
 }
 
@@ -462,6 +468,8 @@ export async function bootstrap() {
   buildMenuBar();
   setAiMenuEnabled(false);
 
+  chat.initializeChat();
+
   // 3. Initial Status_Bar: Untitled, 0 chars, model fallback per
   // Req 9.4 ("(no model)"). The model name is replaced after settings
   // resolve.
@@ -481,7 +489,17 @@ export async function bootstrap() {
       model: statusState.model,
       dirty: editor.isDirty(),
       error: statusState.error,
+      line: statusState.line,
+      column: statusState.column,
     }));
+
+    attachEditorChrome(buffer, {
+      onCursorChange: (pos) => {
+        statusState.line = pos.line;
+        statusState.column = pos.column;
+        renderStatus();
+      },
+    });
   }
 
   // 5. Subscribe to backend events before kicking off the warm-up so
@@ -521,6 +539,7 @@ export async function bootstrap() {
   statusState.model =
     settings && typeof settings.model === "string" ? settings.model : "";
   statusState.error = settingsError;
+  chat.setModelName(statusState.model);
   renderStatus();
 }
 

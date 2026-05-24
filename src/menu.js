@@ -169,6 +169,7 @@ export function buildMenuBar() {
     }
   }
 
+  installSettingsButton();
   installKeydownListener();
 }
 
@@ -223,6 +224,12 @@ function buildMenuElement(menu) {
   const label = document.createElement("span");
   label.className = "menu-label";
   label.textContent = menu.label;
+  label.tabIndex = 0;
+  label.addEventListener("click", () => {
+    const open = wrapper.classList.contains("open");
+    closeAllMenus();
+    if (!open) wrapper.classList.add("open");
+  });
   wrapper.appendChild(label);
 
   const itemList = document.createElement("ul");
@@ -263,10 +270,39 @@ function buildMenuItem(item, isAi) {
 
   li.addEventListener("click", (e) => {
     e.preventDefault();
+    closeAllMenus();
     dispatchAction(item.action, { source: "click" });
   });
 
   return li;
+}
+
+/**
+ * Close every open menu dropdown.
+ *
+ * @returns {void}
+ */
+function closeAllMenus() {
+  if (typeof document === "undefined") return;
+  const menus = document.querySelectorAll("#menu-bar .menu.open");
+  for (const menu of menus) menu.classList.remove("open");
+}
+
+/**
+ * Wire the top-right settings gear to open the Settings modal.
+ *
+ * @returns {void}
+ */
+function installSettingsButton() {
+  if (typeof document === "undefined") return;
+  const button = document.getElementById("settings-button");
+  if (!button || button.dataset.bound === "true") return;
+  button.dataset.bound = "true";
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeAllMenus();
+    openSettingsModal();
+  });
 }
 
 /**

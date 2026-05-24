@@ -18,11 +18,11 @@ name = "llimedit_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.4" }
+tauri-build = { version = "2.5.4", features = [] }
 
 [dependencies]
 # Tauri 2.x runtime; default features kept so the dialog plugin can hook in.
-tauri = "2"
+tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 

@@ -3,14 +3,7 @@
   Copyright (c) 2026 okita.io
 
   LLIMEdit — single-window editor shell.
-  Layout (top to bottom): menu bar, editor textarea, status bar.
-  No tabs, no syntax highlighting, no theming (Req 17.1, 17.2, 17.3, 17.6, 17.7).
-
-  Frontend ES modules are loaded in the order pinned by Task 17:
-    api.js → editor.js → status_bar.js → settings_modal.js → menu.js → main.js
-  Each is declared as a separate `<script type="module">` so the browser
-  evaluates them in document order. ES modules are cached per URL, so
-  the imports inside main.js resolve to the same evaluated instances.
+  Layout: header (menu + settings), split content (chat | editor), status bar.
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -21,20 +14,82 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <nav id="menu-bar" aria-label="Application menu"></nav>
-    <textarea
-      id="buffer"
-      spellcheck="false"
-      autocomplete="off"
-      autocorrect="off"
-      autocapitalize="off"
-      wrap="soft"
-      autofocus
-    ></textarea>
-    <footer id="status-bar" role="status" aria-live="polite"></footer>
+    <header class="app-header">
+      <nav id="menu-bar" aria-label="Application menu"></nav>
+      <button
+        id="settings-button"
+        type="button"
+        aria-label="Settings"
+        title="Settings"
+      >
+        <svg
+          class="settings-icon"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            fill="currentColor"
+            d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm9.2 4.8a7.4 7.4 0 0 0-.12-1.6l2.02-1.58a.6.6 0 0 0 .14-.77l-1.92-3.32a.6.6 0 0 0-.72-.27l-2.38.96a7.5 7.5 0 0 0-2.76-1.6l-.36-2.54A.6.6 0 0 0 14.4 2h-3.8a.6.6 0 0 0-.59.5l-.36 2.54a7.5 7.5 0 0 0-2.76 1.6l-2.38-.96a.6.6 0 0 0-.72.27L2.06 9.27a.6.6 0 0 0 .14.77l2.02 1.58c-.08.52-.12 1.04-.12 1.6s.04 1.08.12 1.6l-2.02 1.58a.6.6 0 0 0-.14.77l1.92 3.32a.6.6 0 0 0 .72.27l2.38-.96c.86.68 1.8 1.22 2.76 1.6l.36 2.54a.6.6 0 0 0 .59.5h3.8a.6.6 0 0 0 .59-.5l.36-2.54a7.5 7.5 0 0 0 2.76-1.6l2.38.96a.6.6 0 0 0 .72-.27l1.92-3.32a.6.6 0 0 0-.14-.77l-2.02-1.58c.08-.52.12-1.04.12-1.6Z"
+          />
+        </svg>
+      </button>
+    </header>
+
+    <div id="content-split">
+      <aside id="chat-panel" aria-label="AI Chat">
+        <div class="chat-header">
+          <span class="chat-title">AI Chat</span>
+          <span id="chat-model" class="chat-model">(no model)</span>
+        </div>
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+        <div class="chat-input-area">
+          <textarea
+            id="chat-input"
+            rows="3"
+            placeholder="Ask the model to edit your document..."
+            spellcheck="false"
+          ></textarea>
+          <div class="chat-actions">
+            <button id="chat-clear" type="button">Clear</button>
+            <button id="chat-send" type="button" class="primary">Send</button>
+          </div>
+        </div>
+      </aside>
+
+      <div id="split-divider" aria-hidden="true"></div>
+
+      <main id="document-editor">
+        <div id="column-ruler" class="column-ruler" aria-hidden="true">
+          <span class="column-ruler-labels"></span>
+        </div>
+        <div id="editor-body" class="editor-body">
+          <div id="line-gutter" class="line-gutter" aria-hidden="true"></div>
+          <textarea
+            id="buffer"
+            spellcheck="false"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            wrap="off"
+            autofocus
+          ></textarea>
+        </div>
+      </main>
+    </div>
+
+    <footer id="status-bar" role="status" aria-live="polite">
+      <span id="status-path" class="status-segment"></span>
+      <span id="status-cursor" class="status-segment"></span>
+      <span id="status-model" class="status-segment status-model"></span>
+    </footer>
 
     <script type="module" src="api.js"></script>
     <script type="module" src="editor.js"></script>
+    <script type="module" src="editor_chrome.js"></script>
+    <script type="module" src="chat.js"></script>
     <script type="module" src="status_bar.js"></script>
     <script type="module" src="settings_modal.js"></script>
     <script type="module" src="menu.js"></script>

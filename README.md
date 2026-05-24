@@ -194,6 +194,131 @@ These can be added in v0.2+.
 
 ---
 
+## **Development**
+
+### Prerequisites
+
+- **Rust** (1.77.2+) — install via [rustup](https://rustup.rs/)
+- **Node.js** (18+) and **npm** — for the frontend test suite
+- **Tauri CLI** (optional, for `cargo tauri dev` / `cargo tauri build`):
+  ```bash
+  cargo install tauri-cli
+  ```
+- Platform dependencies for Tauri 2.x (see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/))
+
+### Setup
+
+```bash
+# Clone the repo
+git clone https://github.com/your-org/LLMEditor.git
+cd LLMEditor
+
+# Install frontend test dependencies
+npm install
+```
+
+### Run in development mode
+
+```bash
+cargo tauri dev
+```
+
+This launches the app with hot-reload for the frontend (`src/`) and recompiles the Rust backend on changes.
+
+### Run tests
+
+```bash
+# Backend (Rust) — 127 tests
+cargo test --manifest-path src-tauri/Cargo.toml
+
+# Frontend (Vitest + jsdom) — 242 tests
+npm test
+```
+
+### Build for release
+
+```bash
+cargo tauri build
+```
+
+Produces:
+- macOS: `src-tauri/target/release/bundle/macos/LLIMEdit.app`
+- Windows: `src-tauri/target/release/bundle/nsis/LLIMEdit_0.1.0_x64-setup.exe`
+
+### Example system prompt
+
+```json
+{
+  "name": "Romance Novel Author and Editor",
+  "role": "An experienced romance novelist and editor with an excellent grasp of language, storytelling techniques, and the conventions of the romance genre. You are skilled at crafting engaging plots, memorable characters, and passionate love scenes. As an editor, you have a keen eye for detail, ensuring the manuscript is polished, structurally sound, and true to the author's unique voice.",
+  "skills": [
+    "Writing compelling romantic plots with clear character arcs",
+    "Creating believable, relatable characters with depth and complexity",
+    "Pacing romance novels effectively to build tension and emotional stakes",
+    "Crafting sensual and steamy love scenes that are tasteful yet evocative",
+    "Editing for grammar, spelling, punctuation, and consistency in style and tone",
+    "Providing constructive feedback on plot development, character motivation, and overall story structure"
+  ],
+  "personality": [
+    "Creative and imaginative with a knack for dreaming up captivating love stories",
+    "Attentive to detail and committed to producing high-quality work",
+    "Supportive and encouraging as both a writing partner and editor",
+    "Understanding of the romance genre's conventions while open to unique twists"
+  ],
+  "style": {
+    "formatting": "Markdown or JSON format for easy organization and reference of story elements",
+    "preferred_genre": "Romance (various sub-genres such as historical, contemporary, paranormal)",
+    "target_audience": "Adult romance readers seeking emotional depth, engaging characters, and satisfying love stories"
+  },
+  "capabilities": [
+    "Drafting original romance novels or providing ghostwriting services",
+    "Editing manuscripts for content, structure, grammar, and style",
+    "Brainstorming story ideas, character profiles, and plot developments with authors",
+    "Offering writing workshops or coaching sessions on the craft of romance novel writing"
+  ]
+}
+```
+
+### Project structure
+
+```
+LLMEditor/
+├── Cargo.toml              # Workspace manifest (keeps Cargo.lock at root)
+├── package.json            # Frontend test deps (vitest, fast-check, jsdom)
+├── vitest.config.js        # Vitest configuration
+├── src/                    # Frontend (vanilla HTML/CSS/JS, no bundler)
+│   ├── index.html
+│   ├── styles.css
+│   ├── main.js             # Bootstrap + event wiring
+│   ├── api.js              # Tauri invoke wrappers
+│   ├── editor.js           # Buffer state, undo/redo, insertion modes
+│   ├── status_bar.js       # Status bar rendering
+│   ├── menu.js             # Menu bar + keyboard shortcuts
+│   ├── settings_modal.js   # Settings modal + validation
+│   └── __tests__/          # Vitest test files
+├── src-tauri/              # Rust backend (Tauri 2.x)
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   └── src/
+│       ├── main.rs         # Binary entry point
+│       ├── lib.rs          # Tauri builder + bootstrap
+│       ├── commands.rs     # #[tauri::command] handlers
+│       ├── settings.rs     # Settings struct + validation
+│       ├── settings_service.rs  # Load/save from OS config dir
+│       ├── file_service.rs # Read/write with BOM + line-ending handling
+│       ├── llm_client.rs   # HTTP client + SSE parser + streaming
+│       ├── state.rs        # AppState, StreamRegistry
+│       ├── error.rs        # Error enums + Display impls
+│       └── events.rs       # Event name constants + emit helpers
+├── scripts/
+│   ├── smoke.md            # End-to-end smoke test runbook
+│   ├── smoke.sh            # CI smoke harness
+│   └── fixtures/           # Test fixture files
+└── .kiro/specs/            # Kiro spec documents
+```
+
+---
+
 ## **10. License**
 - MIT License
 - Public GitHub repo

@@ -178,7 +178,7 @@ describe("renderStatusBar — error reason (Req 14.6)", () => {
       dirty: false,
       error: reason,
     });
-    expect(footer.textContent.endsWith(reason)).toBe(true);
+    expect(footer.textContent.includes(reason)).toBe(true);
   });
 
   it("omits the error segment when error is empty / null / undefined", () => {
@@ -229,12 +229,13 @@ describe("formatStatusBar — composite example", () => {
       charCount: 5,
       model: "local-model",
       dirty: true,
+      line: 3,
+      column: 25,
     });
-    // Asterisk + path is contiguous, then separator before count.
     expect(text.startsWith("*/tmp/a.txt")).toBe(true);
+    expect(text.includes("Ln 3, Col 25")).toBe(true);
     expect(text.includes("5 chars")).toBe(true);
     expect(text.includes("local-model")).toBe(true);
-    // Path appears before count, count appears before model.
     expect(text.indexOf("/tmp/a.txt")).toBeLessThan(text.indexOf("5 chars"));
     expect(text.indexOf("5 chars")).toBeLessThan(text.indexOf("local-model"));
   });

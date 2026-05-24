@@ -15,8 +15,8 @@
       "children": [
         {
           "type": "frame",
-          "id": "cGlDk",
-          "name": "Menu Bar",
+          "id": "Ew95k",
+          "name": "App Header",
           "width": "fill_container",
           "height": 32,
           "fill": "$bg-secondary",
@@ -27,48 +27,89 @@
             },
             "fill": "$border"
           },
-          "gap": 24,
-          "padding": [
-            0,
-            12
-          ],
+          "justifyContent": "space_between",
           "alignItems": "center",
           "children": [
             {
-              "type": "text",
-              "id": "o6rMjc",
-              "fill": "$text-menu",
-              "content": "File",
-              "fontFamily": "$font-ui",
-              "fontSize": 13,
-              "fontWeight": "normal"
+              "type": "frame",
+              "id": "cGlDk",
+              "name": "Menu Bar",
+              "width": "fill_container",
+              "height": 32,
+              "fill": "$bg-secondary",
+              "stroke": {
+                "align": "inside",
+                "thickness": {
+                  "bottom": 1
+                },
+                "fill": "$border"
+              },
+              "gap": 24,
+              "padding": [
+                0,
+                12
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "o6rMjc",
+                  "fill": "$text-menu",
+                  "content": "File",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "FXUxR",
+                  "fill": "$text-menu",
+                  "content": "Edit",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "FS8i2",
+                  "fill": "$text-menu",
+                  "content": "AI",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "y3CRav",
+                  "fill": "$text-menu",
+                  "content": "Help",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
             },
             {
-              "type": "text",
-              "id": "FXUxR",
-              "fill": "$text-menu",
-              "content": "Edit",
-              "fontFamily": "$font-ui",
-              "fontSize": 13,
-              "fontWeight": "normal"
-            },
-            {
-              "type": "text",
-              "id": "FS8i2",
-              "fill": "$text-menu",
-              "content": "AI",
-              "fontFamily": "$font-ui",
-              "fontSize": 13,
-              "fontWeight": "normal"
-            },
-            {
-              "type": "text",
-              "id": "y3CRav",
-              "fill": "$text-menu",
-              "content": "Help",
-              "fontFamily": "$font-ui",
-              "fontSize": 13,
-              "fontWeight": "normal"
+              "type": "frame",
+              "id": "Swo48",
+              "name": "Settings Button",
+              "width": 32,
+              "height": 28,
+              "fill": "#00000000",
+              "cornerRadius": "$radius-sm",
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "eRMtZ",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "settings",
+                  "iconFontFamily": "lucide",
+                  "fill": "$text-muted"
+                }
+              ]
             }
           ]
         },
