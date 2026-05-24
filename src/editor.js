@@ -60,6 +60,7 @@ import * as api from "./api.js";
 import { runAgent } from "./agent.js";
 import { buildContextWindow } from "./context_window.js";
 import * as editorTools from "./editor_tools.js";
+import { extractDocumentEdits } from "./document_edits.js";
 
 let bufferEl = null;
 let currentPath = null;
@@ -72,6 +73,8 @@ let agentActive = false;
 let agentEditGroup = null;
 /** @type {string} */
 let agentEditBuffer = "";
+/** @type {number} Spaces inserted when Tab is pressed (2 or 4). */
+let tabSpaces = 4;
 /** @type {null | {
  *   mode: "insert_at_cursor" | "replace_selection" | "replace_document",
  *   startCursor: number,
@@ -250,6 +253,7 @@ export function initialize() {
 
   if (bufferEl) {
     _attachEventListeners(bufferEl);
+    applyEditorSettings({ tab_spaces: tabSpaces });
   }
 }
 
@@ -291,6 +295,22 @@ export function isStreamActive() {
  */
 export function currentFilePath() {
   return currentPath;
+}
+
+/**
+ * Apply editor-relevant fields from a settings snapshot (e.g. after load
+ * or save). Currently configures Tab → spaces behavior.
+ *
+ * @param {object | null | undefined} settings
+ * @returns {void}
+ */
+export function applyEditorSettings(settings) {
+  const n =
+    settings && typeof settings === "object" ? Number(settings.tab_spaces) : NaN;
+  tabSpaces = n === 2 ? 2 : 4;
+  if (bufferEl) {
+    bufferEl.style.tabSize = String(tabSpaces);
+  }
 }
 
 /**
@@ -841,25 +861,36 @@ export async function sendToLLM() {
 
 /**
  * Send a chat instruction to the model using the tool-use agent loop.
- * Document edits are applied via editor tools; assistant replies appear
- * in the chat panel only.
+ *
+ * @param {string} text
+ * @param {{ retry?: boolean }} [options]
+ * @returns {Promise<void>}
+ */
+export async function sendChatMessage(text, options = {}) {
+  if (!bufferEl) return;
+  const prompt = typeof text === "string" ? text.trim() : "";
+  await _sendAgentPrompt(prompt, options);
+}
+
+/**
+ * Retry a failed chat instruction without adding a duplicate user bubble.
  *
  * @param {string} text
  * @returns {Promise<void>}
  */
-export async function sendChatMessage(text) {
-  if (!bufferEl) return;
-  const prompt = typeof text === "string" ? text.trim() : "";
-  await _sendAgentPrompt(prompt);
+export async function retryChatMessage(text) {
+  await sendChatMessage(text, { retry: true });
 }
 
 /**
  * Run the tool-use agent loop for a chat instruction.
  *
  * @param {string} text
+ * @param {{ retry?: boolean }} [options]
  * @returns {Promise<void>}
  */
-async function _sendAgentPrompt(text) {
+async function _sendAgentPrompt(text, options = {}) {
+  const retry = options.retry === true;
   if (agentActive || streamActive) {
     _emitStatus("A request is already in progress");
     return;
@@ -880,7 +911,11 @@ async function _sendAgentPrompt(text) {
 
   agentActive = true;
   _beginAgentEdit();
-  _emitChatStart(text);
+  if (retry) {
+    _emitChatRetry(text);
+  } else {
+    _emitChatStart(text);
+  }
   _emitStatus("Thinking…");
 
   const selStart =
@@ -888,6 +923,9 @@ async function _sendAgentPrompt(text) {
   const selEnd =
     typeof bufferEl.selectionEnd === "number" ? bufferEl.selectionEnd : selStart;
   const contextAnchor = buildContextWindow(bufferEl.value, selStart, selEnd);
+
+  let success = false;
+  let errorMessage = "";
 
   try {
     await runAgent({
@@ -911,18 +949,23 @@ async function _sendAgentPrompt(text) {
         onAssistantMessage: (message) => {
           _emitChatAssistant(message);
         },
+        onUnappliedEditsHint: (message) => {
+          _emitChatUnappliedEdits(message);
+        },
         applyMutatingResult: (el, name, result) => {
           _applyAgentToolResult(el, name, result);
         },
       },
     });
+    success = true;
     _emitStatus("");
   } catch (err) {
-    _emitStatus(_errorMessage(err));
+    errorMessage = _errorMessage(err);
+    _emitStatus(errorMessage);
   } finally {
     _completeAgentEdit();
     agentActive = false;
-    _emitChatComplete();
+    _emitChatComplete({ success, text, error: errorMessage || undefined });
   }
 }
 
@@ -975,6 +1018,61 @@ function _applyAgentToolResult(el, name, result) {
   }
   el.value = newText;
   el.dispatchEvent(new Event("input"));
+  _scrollToToolResult(el, name, result);
+}
+
+/**
+ * @param {HTMLTextAreaElement} el
+ * @param {string} name
+ * @param {Record<string, unknown>} result
+ * @returns {void}
+ */
+function _scrollToToolResult(el, name, result) {
+  const line =
+    name === "replace_range"
+      ? Number(result.start_line)
+      : name === "insert_text"
+        ? Number(result.line)
+        : NaN;
+  if (!Number.isFinite(line)) return;
+  editorTools.applyGotoLine(el, { ok: true, line });
+}
+
+/**
+ * Apply edit payloads extracted from assistant chat text.
+ *
+ * @param {Array<{ name: string, args: Record<string, unknown> }>} edits
+ * @returns {number} count of edits that changed the buffer
+ */
+export function applyDocumentEdits(edits) {
+  if (!bufferEl || !Array.isArray(edits) || edits.length === 0) return 0;
+  if (agentActive || streamActive) return 0;
+
+  _beginAgentEdit();
+  let applied = 0;
+  try {
+    for (const edit of edits) {
+      if (!edit || typeof edit.name !== "string") continue;
+      const ctx = { text: bufferEl.value, path: currentPath };
+      const result = editorTools.executeTool(edit.name, edit.args ?? {}, ctx);
+      _applyAgentToolResult(bufferEl, edit.name, result);
+      if (result.ok === true && result.changed === true) {
+        applied += 1;
+      }
+    }
+  } finally {
+    _completeAgentEdit();
+  }
+  return applied;
+}
+
+/**
+ * @param {string} assistantText
+ * @returns {number}
+ */
+export function applyDocumentEditsFromAssistantText(assistantText) {
+  const edits = extractDocumentEdits(assistantText);
+  return applyDocumentEdits(edits);
 }
 
 /**
@@ -1183,14 +1281,32 @@ function _emitChatToken(fragment) {
 }
 
 /**
+ * @param {{ success?: boolean, text?: string, error?: string }} [detail]
  * @returns {void}
  */
-function _emitChatComplete() {
+function _emitChatComplete(detail = { success: true }) {
   if (typeof document === "undefined" || typeof CustomEvent !== "function") {
     return;
   }
   try {
-    document.dispatchEvent(new CustomEvent("editor:chat-complete"));
+    document.dispatchEvent(new CustomEvent("editor:chat-complete", { detail }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {string} text
+ * @returns {void}
+ */
+function _emitChatRetry(text) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-retry", { detail: { text } })
+    );
   } catch {
     /* ignore */
   }
@@ -1242,6 +1358,23 @@ function _emitChatAssistant(message) {
   try {
     document.dispatchEvent(
       new CustomEvent("editor:chat-assistant", { detail: { message } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {string} message
+ * @returns {void}
+ */
+function _emitChatUnappliedEdits(message) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-unapplied-edits", { detail: { message } })
     );
   } catch {
     /* ignore */
@@ -2037,6 +2170,33 @@ function _isPrintableTypedKey(e) {
   return e.key.length === 1;
 }
 
+function _insertTabSpaces(el) {
+  const count = tabSpaces === 2 ? 2 : 4;
+  const spaces = " ".repeat(count);
+  const beforeSelection = _captureSelection();
+  const start = beforeSelection.start;
+  const end = beforeSelection.end;
+  const value = el.value;
+  const deleted = value.slice(start, end);
+  const next = value.slice(0, start) + spaces + value.slice(end);
+  el.value = next;
+  const newCaret = start + spaces.length;
+  el.selectionStart = newCaret;
+  el.selectionEnd = newCaret;
+
+  pushUndo({
+    source: "tab",
+    beforeSelection: { ...beforeSelection },
+    afterSelection: { start: newCaret, end: newCaret },
+    changes: [{ at: start, deleted, inserted: spaces }],
+    lastAppendedAt: Date.now(),
+  });
+
+  cursorJumped = true;
+  lastRecordedSelection = { start: newCaret, end: newCaret };
+  el.dispatchEvent(new Event("input"));
+}
+
 /**
  * Attach all DOM listeners that drive the typed-input grouping,
  * paste/cut pipelines, and `cursorJumped` flag. Returned teardowns
@@ -2048,6 +2208,21 @@ function _isPrintableTypedKey(e) {
  */
 function _attachEventListeners(el) {
   const onKeydown = (e) => {
+    // Tab → spaces (settings: tab_spaces = 2 or 4).
+    if (
+      e.key === "Tab" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      e.target === el &&
+      !streamActive &&
+      !agentActive
+    ) {
+      e.preventDefault();
+      _insertTabSpaces(el);
+      return;
+    }
+
     // Cursor-moving keys: flip the jump flag so any in-flight typing
     // group is broken on the next keystroke (Req 18.2).
     if (CURSOR_JUMP_KEYS.has(e.key)) {

@@ -231,9 +231,89 @@ body {
   border: 1px solid var(--border);
 }
 
+.chat-bubble-user.chat-bubble-failed {
+  border-color: #f14c4c;
+}
+
+.chat-bubble-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-bubble-head .chat-bubble-label {
+  flex: 1 1 auto;
+}
+
+.chat-retry-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.chat-retry-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chat-retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-bubble-error {
+  font-size: 11px;
+  color: #f14c4c;
+  margin-top: 2px;
+}
+
 .chat-bubble-assistant {
   background: var(--bg-primary);
   border: 1px solid var(--accent);
+}
+
+.chat-bubble-assistant .chat-bubble-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-bubble-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.chat-apply-edits-btn {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.chat-apply-edits-btn:hover:not(:disabled) {
+  background: var(--input-bg);
+}
+
+.chat-apply-edits-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .chat-bubble-label {

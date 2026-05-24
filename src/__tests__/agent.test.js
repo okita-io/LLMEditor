@@ -64,6 +64,76 @@ describe("runAgent", () => {
     expect(onAssistantMessage).toHaveBeenCalledWith("Line 1 updated.");
     expect(api.agentTurn).toHaveBeenCalledTimes(2);
   });
+
+  it("nudges once when assistant describes edits without calling tools", async () => {
+    vi.mocked(api.agentTurn)
+      .mockResolvedValueOnce({
+        content:
+          '```json\n{"tool":"insert_text","line":2,"column":1,"text":"added"}\n```',
+        tool_calls: [],
+        finish_reason: "stop",
+      })
+      .mockResolvedValueOnce({
+        content: "Applied the insert.",
+        tool_calls: [],
+        finish_reason: "stop",
+      });
+
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "line1\nline2";
+    const onUnappliedEditsHint = vi.fn();
+
+    await runAgent({
+      userMessage: "add text",
+      settings: { system_prompt: "" },
+      bufferEl,
+      contextAnchor: null,
+      callbacks: {
+        getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+        onUnappliedEditsHint,
+      },
+    });
+
+    expect(api.agentTurn).toHaveBeenCalledTimes(2);
+    expect(api.agentTurn.mock.calls[1][0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: expect.stringContaining("did not apply") }),
+      ])
+    );
+  });
+
+  it("fires onUnappliedEditsHint when edits remain in final assistant text", async () => {
+    vi.mocked(api.agentTurn)
+      .mockResolvedValueOnce({
+        content:
+          'Still in chat only:\n```json\n{"tool":"insert_text","line":1,"column":1,"text":"x"}\n```',
+        tool_calls: [],
+        finish_reason: "stop",
+      })
+      .mockResolvedValueOnce({
+        content:
+          'Still in chat only:\n```json\n{"tool":"insert_text","line":1,"column":1,"text":"x"}\n```',
+        tool_calls: [],
+        finish_reason: "stop",
+      });
+
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "doc";
+    const onUnappliedEditsHint = vi.fn();
+
+    await runAgent({
+      userMessage: "edit",
+      settings: { system_prompt: "" },
+      bufferEl,
+      contextAnchor: null,
+      callbacks: {
+        getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+        onUnappliedEditsHint,
+      },
+    });
+
+    expect(onUnappliedEditsHint).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("agent _internal.buildSystemPrompt", () => {

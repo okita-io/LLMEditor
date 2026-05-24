@@ -53,6 +53,7 @@ const VALID_SETTINGS = Object.freeze({
   max_tokens: 2048,
   replace_mode: "replace_document",
   system_prompt: "",
+  tab_spaces: 4,
 });
 
 beforeEach(() => {
@@ -267,6 +268,20 @@ describe("validateField — system_prompt", () => {
   });
 });
 
+describe("validateField — tab_spaces", () => {
+  it("accepts 2 and 4", () => {
+    expect(validateField("tab_spaces", 2)).toEqual({ ok: true, value: 2 });
+    expect(validateField("tab_spaces", 4)).toEqual({ ok: true, value: 4 });
+    expect(validateField("tab_spaces", "2")).toEqual({ ok: true, value: 2 });
+  });
+
+  it("rejects other values", () => {
+    expect(validateField("tab_spaces", 0).ok).toBe(false);
+    expect(validateField("tab_spaces", 3).ok).toBe(false);
+    expect(validateField("tab_spaces", 8).ok).toBe(false);
+  });
+});
+
 describe("validateAll", () => {
   it("returns the normalized values when every field is valid", () => {
     const r = validateAll({
@@ -276,6 +291,7 @@ describe("validateAll", () => {
       max_tokens: "1024",
       replace_mode: "insert_at_cursor",
       system_prompt: "prompt",
+      tab_spaces: "2",
     });
     expect(r.ok).toBe(true);
     expect(r.values).toEqual({
@@ -285,6 +301,7 @@ describe("validateAll", () => {
       max_tokens: 1024,
       replace_mode: "insert_at_cursor",
       system_prompt: "prompt",
+      tab_spaces: 2,
     });
   });
 
@@ -296,6 +313,7 @@ describe("validateAll", () => {
       max_tokens: 0,
       replace_mode: "wrong",
       system_prompt: "x".repeat(32_769),
+      tab_spaces: 3,
     });
     expect(r.ok).toBe(false);
     const fields = Array.from(r.errors.keys()).sort();
@@ -305,6 +323,7 @@ describe("validateAll", () => {
       "model",
       "replace_mode",
       "system_prompt",
+      "tab_spaces",
       "temperature",
     ]);
   });
@@ -463,6 +482,7 @@ describe("Save with all-valid fields (Req 11.3)", () => {
       max_tokens: 1024,
       replace_mode: "insert_at_cursor",
       system_prompt: "Be terse.",
+      tab_spaces: 4,
     });
     expect(isModalOpen()).toBe(false);
     expect(document.querySelector("#settings-modal").hidden).toBe(true);

@@ -1098,6 +1098,7 @@ mod tests {
             max_tokens: 256,
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: system_prompt.into(),
+            tab_spaces: 4,
         }
     }
 

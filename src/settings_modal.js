@@ -42,6 +42,7 @@
 // - Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9.
 
 import * as api from "./api.js";
+import * as editor from "./editor.js";
 
 /* -------------------------------------------------------------------- */
 /* Validation bounds (mirror Rust `Settings::validate_field`).          */
@@ -77,6 +78,9 @@ const REPLACE_MODE_VALUES = Object.freeze([
   "replace_document",
 ]);
 
+/** Allowed values for `tab_spaces`. */
+const TAB_SPACES_VALUES = Object.freeze([2, 4]);
+
 /** Default settings used when `loadSettings()` rejects on open. */
 const FALLBACK_DEFAULTS = Object.freeze({
   api_url: "http://localhost:1234/v1/chat/completions",
@@ -85,6 +89,7 @@ const FALLBACK_DEFAULTS = Object.freeze({
   max_tokens: 2048,
   replace_mode: "replace_document",
   system_prompt: "",
+  tab_spaces: 4,
 });
 
 /* -------------------------------------------------------------------- */
@@ -259,6 +264,26 @@ export function validateField(name, rawValue) {
       }
       return { ok: true, value: rawValue };
     }
+    case "tab_spaces": {
+      let num;
+      if (typeof rawValue === "number") {
+        num = rawValue;
+      } else if (typeof rawValue === "string") {
+        if (rawValue.trim().length === 0) {
+          return { ok: false, reason: "must be 2 or 4" };
+        }
+        num = Number(rawValue);
+      } else {
+        return { ok: false, reason: "must be 2 or 4" };
+      }
+      if (!Number.isFinite(num) || !Number.isInteger(num)) {
+        return { ok: false, reason: "must be 2 or 4" };
+      }
+      if (!TAB_SPACES_VALUES.includes(num)) {
+        return { ok: false, reason: "must be 2 or 4" };
+      }
+      return { ok: true, value: num };
+    }
     default:
       return { ok: false, reason: "unknown settings field" };
   }
@@ -284,6 +309,7 @@ export function validateAll(input) {
     "max_tokens",
     "replace_mode",
     "system_prompt",
+    "tab_spaces",
   ]) {
     const result = validateField(field, input ? input[field] : undefined);
     if (result.ok) {
@@ -396,6 +422,17 @@ function ensureModalBuilt() {
     return sel;
   });
 
+  addField("settings-tab-spaces", "tab_spaces", "Tab → Spaces", () => {
+    const sel = document.createElement("select");
+    for (const value of TAB_SPACES_VALUES) {
+      const opt = document.createElement("option");
+      opt.value = String(value);
+      opt.textContent = `${value} spaces`;
+      sel.appendChild(opt);
+    }
+    return sel;
+  });
+
   addField("settings-system-prompt", "system_prompt", "System Prompt", () => {
     return document.createElement("textarea");
   });
@@ -487,6 +524,7 @@ function readFormValues() {
     max_tokens: getInputValue("settings-max-tokens"),
     replace_mode: getInputValue("settings-replace-mode"),
     system_prompt: getInputValue("settings-system-prompt"),
+    tab_spaces: getInputValue("settings-tab-spaces"),
   };
 }
 
@@ -537,6 +575,10 @@ function applySettingsToForm(settings) {
     ? merged.replace_mode
     : FALLBACK_DEFAULTS.replace_mode;
   setInputValue("settings-replace-mode", rmode);
+  const tabSpaces = TAB_SPACES_VALUES.includes(Number(merged.tab_spaces))
+    ? merged.tab_spaces
+    : FALLBACK_DEFAULTS.tab_spaces;
+  setInputValue("settings-tab-spaces", tabSpaces);
   setInputValue("settings-system-prompt", merged.system_prompt);
 }
 
@@ -605,6 +647,7 @@ async function onSubmit() {
 
   try {
     await api.saveSettings(result.values);
+    editor.applyEditorSettings(result.values);
     close();
   } catch (err) {
     // Req 11.9: keep the modal open, surface the failure in the

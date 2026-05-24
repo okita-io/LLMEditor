@@ -301,6 +301,7 @@ const FIELDS: &[&str] = &[
     "max_tokens",
     "replace_mode",
     "system_prompt",
+    "tab_spaces",
 ];
 
 /// Take each known field from `obj` if present and valid; fall back to
@@ -462,6 +463,7 @@ mod tests {
             max_tokens: 4096,
             replace_mode: ReplaceMode::InsertAtCursor,
             system_prompt: "You are a helpful editor.".into(),
+            tab_spaces: 4,
         };
         fs::write(
             dir.path().join("settings.json"),
@@ -589,6 +591,7 @@ mod tests {
             max_tokens: 1234,
             replace_mode: ReplaceMode::ReplaceSelection,
             system_prompt: "be terse".into(),
+            tab_spaces: 2,
         };
         save_to(dir.path(), &s).expect("save");
 

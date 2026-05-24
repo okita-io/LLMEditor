@@ -152,6 +152,14 @@ export function executeTool(name, args, ctx) {
   const path = ctx.path ?? null;
   const contextAnchor = ctx.contextAnchor ?? null;
 
+  /** @param {Record<string, unknown>} result */
+  const withChanged = (result) => {
+    if (!result || result.ok !== true || typeof result.new_text !== "string") {
+      return { ...result, changed: false };
+    }
+    return { ...result, changed: result.new_text !== text };
+  };
+
   switch (name) {
     case "get_document": {
       const snap = getDocumentSnapshot(text, path, contextAnchor);
@@ -176,13 +184,13 @@ export function executeTool(name, args, ctx) {
         Number(args.column ?? 1),
         String(args.text ?? "")
       );
-      if (!result.ok) return result;
-      return {
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
         ok: true,
         line: result.line,
         column: result.column,
         new_text: result.text,
-      };
+      });
     }
     case "replace_range": {
       const result = replaceRange(
@@ -191,13 +199,13 @@ export function executeTool(name, args, ctx) {
         Number(args.end_line ?? 1),
         String(args.text ?? "")
       );
-      if (!result.ok) return result;
-      return {
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
         ok: true,
         start_line: result.start_line,
         end_line: result.end_line,
         new_text: result.text,
-      };
+      });
     }
     case "delete_range": {
       const result = deleteRange(
@@ -205,8 +213,12 @@ export function executeTool(name, args, ctx) {
         Number(args.start_line ?? 1),
         Number(args.end_line ?? 1)
       );
-      if (!result.ok) return result;
-      return { ok: true, deleted_lines: result.deleted_lines, new_text: result.text };
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
+        ok: true,
+        deleted_lines: result.deleted_lines,
+        new_text: result.text,
+      });
     }
     default:
       return { ok: false, error: `unknown tool: ${name}` };

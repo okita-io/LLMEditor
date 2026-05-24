@@ -4,6 +4,7 @@
 // AI chat panel — conversation UI separate from the document buffer.
 
 import * as editor from "./editor.js";
+import { extractDocumentEdits } from "./document_edits.js";
 
 let messagesEl = null;
 let inputEl = null;
@@ -11,7 +12,11 @@ let sendBtn = null;
 let clearBtn = null;
 let modelEl = null;
 /** @type {HTMLElement | null} */
+let activeAssistantBubble = null;
+/** @type {HTMLElement | null} */
 let activeAssistantBody = null;
+/** @type {HTMLElement | null} */
+let pendingUserBubble = null;
 
 /**
  * @returns {void}
@@ -52,6 +57,98 @@ function appendBubble(role, text) {
 }
 
 /**
+ * @param {string} text
+ * @returns {HTMLElement | null}
+ */
+function appendUserMessage(text) {
+  if (!messagesEl) return null;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-user";
+  bubble.dataset.chatText = text;
+
+  const head = document.createElement("div");
+  head.className = "chat-bubble-head";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = "You";
+  head.appendChild(label);
+
+  const retryBtn = document.createElement("button");
+  retryBtn.type = "button";
+  retryBtn.className = "chat-retry-btn";
+  retryBtn.hidden = true;
+  retryBtn.textContent = "Retry";
+  retryBtn.addEventListener("click", () => {
+    void retryUserMessage(bubble);
+  });
+  head.appendChild(retryBtn);
+
+  bubble.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "chat-bubble-body";
+  body.textContent = text;
+  bubble.appendChild(body);
+
+  const errorEl = document.createElement("div");
+  errorEl.className = "chat-bubble-error";
+  errorEl.hidden = true;
+  bubble.appendChild(errorEl);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+  pendingUserBubble = bubble;
+  return bubble;
+}
+
+/**
+ * @param {HTMLElement} bubble
+ * @returns {void}
+ */
+function clearUserBubbleFailure(bubble) {
+  bubble.classList.remove("chat-bubble-failed");
+  const retryBtn = bubble.querySelector(".chat-retry-btn");
+  const errorEl = bubble.querySelector(".chat-bubble-error");
+  if (retryBtn) retryBtn.hidden = true;
+  if (errorEl) {
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  }
+}
+
+/**
+ * @param {string} [error]
+ * @returns {void}
+ */
+function markPendingUserBubbleFailed(error) {
+  if (!pendingUserBubble) return;
+  pendingUserBubble.classList.add("chat-bubble-failed");
+  const retryBtn = pendingUserBubble.querySelector(".chat-retry-btn");
+  const errorEl = pendingUserBubble.querySelector(".chat-bubble-error");
+  if (retryBtn) retryBtn.hidden = false;
+  if (errorEl) {
+    errorEl.textContent =
+      typeof error === "string" && error.length > 0 ? error : "Request failed";
+    errorEl.hidden = false;
+  }
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {HTMLElement} bubble
+ * @returns {Promise<void>}
+ */
+async function retryUserMessage(bubble) {
+  const text = bubble.dataset.chatText;
+  if (typeof text !== "string" || text.length === 0) return;
+  pendingUserBubble = bubble;
+  clearUserBubbleFailure(bubble);
+  await editor.retryChatMessage(text);
+}
+
+/**
  * @param {boolean} streaming
  * @returns {void}
  */
@@ -77,6 +174,8 @@ export function setModelName(model) {
 export function clearMessages() {
   if (messagesEl) messagesEl.replaceChildren();
   activeAssistantBody = null;
+  activeAssistantBubble = null;
+  pendingUserBubble = null;
 }
 
 /**
@@ -84,7 +183,7 @@ export function clearMessages() {
  * @returns {void}
  */
 export function addUserMessage(text) {
-  appendBubble("user", text);
+  appendUserMessage(text);
 }
 
 /**
@@ -128,10 +227,14 @@ export function appendToolResult(name, result) {
 
   const body = document.createElement("div");
   body.className = "chat-bubble-body chat-tool-body";
-  const summary =
-    result && result.ok === true
-      ? `${name} → ok`
-      : `${name} → ${JSON.stringify(result)}`;
+  let summary;
+  if (!result || result.ok !== true) {
+    summary = `${name} → error: ${result?.error ?? "failed"}`;
+  } else if (result.changed === false) {
+    summary = `${name} → no change (document unchanged)`;
+  } else {
+    summary = `${name} → applied`;
+  }
   body.textContent = summary;
   bubble.appendChild(body);
 
@@ -144,8 +247,75 @@ export function appendToolResult(name, result) {
  * @returns {HTMLElement | null}
  */
 export function beginAssistantMessage(initialText = "") {
-  activeAssistantBody = appendBubble("assistant", initialText);
-  return activeAssistantBody;
+  if (!messagesEl) return null;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-assistant";
+
+  const head = document.createElement("div");
+  head.className = "chat-bubble-head";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = "Assistant";
+  head.appendChild(label);
+
+  const actions = document.createElement("div");
+  actions.className = "chat-bubble-actions";
+  head.appendChild(actions);
+
+  bubble.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "chat-bubble-body";
+  body.textContent = initialText;
+  bubble.appendChild(body);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+
+  activeAssistantBubble = bubble;
+  activeAssistantBody = body;
+  return body;
+}
+
+/**
+ * @param {HTMLElement} bubble
+ * @param {string} assistantText
+ * @returns {void}
+ */
+function attachApplyEditsButton(bubble, assistantText) {
+  const edits = extractDocumentEdits(assistantText);
+  if (edits.length === 0) return;
+
+  const head = bubble.querySelector(".chat-bubble-head");
+  if (!head) return;
+
+  let actions = head.querySelector(".chat-bubble-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.className = "chat-bubble-actions";
+    head.appendChild(actions);
+  }
+
+  if (actions.querySelector(".chat-apply-edits-btn")) return;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "chat-apply-edits-btn";
+  btn.textContent = "Apply to document";
+  btn.title = `Apply ${edits.length} edit(s) from this message to the document`;
+  btn.addEventListener("click", () => {
+    const applied = editor.applyDocumentEdits(edits);
+    if (applied > 0) {
+      btn.textContent = "Applied";
+      btn.disabled = true;
+    } else {
+      btn.textContent = "No changes applied";
+    }
+  });
+  actions.appendChild(btn);
+  scrollMessagesToBottom();
 }
 
 /**
@@ -164,9 +334,19 @@ export function appendAssistantFragment(fragment) {
  * @returns {void}
  */
 export function finalizeAssistantMessage() {
+  if (activeAssistantBubble && activeAssistantBody) {
+    attachApplyEditsButton(
+      activeAssistantBubble,
+      activeAssistantBody.textContent ?? ""
+    );
+  }
   activeAssistantBody = null;
+  activeAssistantBubble = null;
   setStreamingUi(false);
 }
+
+/** @type {boolean} */
+let chatListenersAttached = false;
 
 /**
  * @returns {void}
@@ -180,13 +360,15 @@ export function initializeChat() {
   clearBtn = document.getElementById("chat-clear");
   modelEl = document.getElementById("chat-model");
 
-  if (sendBtn) {
+  if (sendBtn && !sendBtn.dataset.chatBound) {
+    sendBtn.dataset.chatBound = "1";
     sendBtn.addEventListener("click", () => {
       void sendChatPrompt();
     });
   }
 
-  if (inputEl) {
+  if (inputEl && !inputEl.dataset.chatBound) {
+    inputEl.dataset.chatBound = "1";
     inputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -195,11 +377,15 @@ export function initializeChat() {
     });
   }
 
-  if (clearBtn) {
+  if (clearBtn && !clearBtn.dataset.chatBound) {
+    clearBtn.dataset.chatBound = "1";
     clearBtn.addEventListener("click", () => {
       clearMessages();
     });
   }
+
+  if (chatListenersAttached) return;
+  chatListenersAttached = true;
 
   if (typeof document !== "undefined") {
     document.addEventListener("editor:chat-start", (event) => {
@@ -209,7 +395,21 @@ export function initializeChat() {
         detail && typeof detail === "object" && typeof detail.text === "string"
           ? detail.text
           : "";
-      if (text.length > 0) addUserMessage(text);
+      if (text.length > 0) appendUserMessage(text);
+      activeAssistantBody = null;
+      setStreamingUi(true);
+    });
+
+    document.addEventListener("editor:chat-retry", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const text =
+        detail && typeof detail === "object" && typeof detail.text === "string"
+          ? detail.text
+          : "";
+      if (pendingUserBubble && text.length > 0) {
+        clearUserBubbleFailure(pendingUserBubble);
+      }
       activeAssistantBody = null;
       setStreamingUi(true);
     });
@@ -227,6 +427,20 @@ export function initializeChat() {
       } else {
         activeAssistantBody.textContent = message;
         scrollMessagesToBottom();
+      }
+    });
+
+    document.addEventListener("editor:chat-unapplied-edits", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const message =
+        detail && typeof detail === "object" && typeof detail.message === "string"
+          ? detail.message
+          : "";
+      if (message.length === 0) return;
+      const bubble = activeAssistantBubble;
+      if (bubble) {
+        attachApplyEditsButton(bubble, message);
       }
     });
 
@@ -260,8 +474,27 @@ export function initializeChat() {
       appendAssistantFragment(fragment);
     });
 
-    document.addEventListener("editor:chat-complete", () => {
+    document.addEventListener("editor:chat-complete", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const success =
+        !detail || typeof detail !== "object" || detail.success !== false;
+
       finalizeAssistantMessage();
+
+      if (!success) {
+        const error =
+          detail && typeof detail === "object" && typeof detail.error === "string"
+            ? detail.error
+            : "Request failed";
+        markPendingUserBubbleFailed(error);
+        return;
+      }
+
+      if (pendingUserBubble) {
+        clearUserBubbleFailure(pendingUserBubble);
+      }
+      pendingUserBubble = null;
     });
   }
 }
@@ -276,3 +509,10 @@ async function sendChatPrompt() {
   inputEl.value = "";
   await editor.sendChatMessage(text);
 }
+
+export const _internal = {
+  appendUserMessage,
+  markPendingUserBubbleFailed,
+  clearUserBubbleFailure,
+  getPendingUserBubble: () => pendingUserBubble,
+};

@@ -61,6 +61,9 @@ pub const SYSTEM_PROMPT_MIN_CHARS: usize = 0;
 /// Inclusive maximum length of `system_prompt`. Req 10.2 (32,768).
 pub const SYSTEM_PROMPT_MAX_CHARS: usize = 32_768;
 
+/// Allowed values for `tab_spaces` (spaces inserted when Tab is pressed).
+pub const TAB_SPACES_VALUES: [u8; 2] = [2, 4];
+
 // -----------------------------------------------------------------------------
 // FieldError
 // -----------------------------------------------------------------------------
@@ -134,6 +137,8 @@ pub struct Settings {
     pub max_tokens: u32,
     pub replace_mode: ReplaceMode,
     pub system_prompt: String,
+    /// Spaces inserted when the user presses Tab in the editor (2 or 4).
+    pub tab_spaces: u8,
 }
 
 impl Default for Settings {
@@ -148,6 +153,7 @@ impl Default for Settings {
             max_tokens: 2048,
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: String::new(),
+            tab_spaces: 4,
         }
     }
 }
@@ -178,6 +184,9 @@ impl Settings {
         // rejected it). No check needed here; the JSON-shaped sibling
         // `validate_field` does cover the string form.
         if let Err(e) = validate_system_prompt(&self.system_prompt) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_tab_spaces(self.tab_spaces) {
             errs.push(e);
         }
 
@@ -223,6 +232,10 @@ impl Settings {
             "system_prompt" => {
                 let s = expect_string(name, value)?;
                 validate_system_prompt(s)
+            }
+            "tab_spaces" => {
+                let n = expect_u32(name, value)?;
+                validate_tab_spaces_u32(n)
             }
             other => Err(FieldError::new(other, "unknown settings field")),
         }
@@ -353,6 +366,20 @@ fn validate_replace_mode_str(s: &str) -> Result<(), FieldError> {
     }
 }
 
+fn validate_tab_spaces(n: u8) -> Result<(), FieldError> {
+    if TAB_SPACES_VALUES.contains(&n) {
+        Ok(())
+    } else {
+        Err(FieldError::new("tab_spaces", "must be 2 or 4"))
+    }
+}
+
+fn validate_tab_spaces_u32(n: u32) -> Result<(), FieldError> {
+    validate_tab_spaces(
+        u8::try_from(n).map_err(|_| FieldError::new("tab_spaces", "must be 2 or 4"))?,
+    )
+}
+
 // -----------------------------------------------------------------------------
 // JSON-shape helpers (private)
 // -----------------------------------------------------------------------------
@@ -397,6 +424,7 @@ mod tests {
         assert_eq!(s.max_tokens, 2048);
         assert_eq!(s.replace_mode, ReplaceMode::ReplaceDocument);
         assert_eq!(s.system_prompt, "");
+        assert_eq!(s.tab_spaces, 4);
     }
 
     #[test]
@@ -466,6 +494,7 @@ mod tests {
             max_tokens: 0,
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: "x".repeat(SYSTEM_PROMPT_MAX_CHARS + 1),
+            tab_spaces: 4,
         };
         let errs = s.validate().expect_err("expected validation errors");
         let fields: Vec<&str> = errs.iter().map(|e| e.field.as_str()).collect();
@@ -567,6 +596,8 @@ mod tests {
         );
         assert!(Settings::validate_field("system_prompt", &json!("")).is_ok());
         assert!(Settings::validate_field("system_prompt", &json!("hello")).is_ok());
+        assert!(Settings::validate_field("tab_spaces", &json!(2)).is_ok());
+        assert!(Settings::validate_field("tab_spaces", &json!(4)).is_ok());
     }
 
     #[test]
@@ -601,6 +632,11 @@ mod tests {
         // system_prompt
         let big = "x".repeat(SYSTEM_PROMPT_MAX_CHARS + 1);
         assert!(Settings::validate_field("system_prompt", &json!(big)).is_err());
+
+        // tab_spaces
+        assert!(Settings::validate_field("tab_spaces", &json!(0)).is_err());
+        assert!(Settings::validate_field("tab_spaces", &json!(3)).is_err());
+        assert!(Settings::validate_field("tab_spaces", &json!(8)).is_err());
     }
 
     #[test]
@@ -679,6 +715,10 @@ mod prop_tests {
         ]
     }
 
+    fn arb_tab_spaces() -> impl Strategy<Value = u8> {
+        prop_oneof![Just(2u8), Just(4u8)]
+    }
+
     fn arb_settings() -> impl Strategy<Value = Settings> {
         (
             arb_api_url(),
@@ -687,9 +727,18 @@ mod prop_tests {
             arb_max_tokens(),
             arb_replace_mode(),
             arb_system_prompt(),
+            arb_tab_spaces(),
         )
             .prop_map(
-                |(api_url, model, temperature, max_tokens, replace_mode, system_prompt)| {
+                |(
+                    api_url,
+                    model,
+                    temperature,
+                    max_tokens,
+                    replace_mode,
+                    system_prompt,
+                    tab_spaces,
+                )| {
                     Settings {
                         api_url,
                         model,
@@ -697,6 +746,7 @@ mod prop_tests {
                         max_tokens,
                         replace_mode,
                         system_prompt,
+                        tab_spaces,
                     }
                 },
             )

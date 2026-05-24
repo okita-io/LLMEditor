@@ -536,6 +536,10 @@ export async function bootstrap() {
 
   setAiMenuEnabled(true);
 
+  if (settings) {
+    editor.applyEditorSettings(settings);
+  }
+
   statusState.model =
     settings && typeof settings.model === "string" ? settings.model : "";
   statusState.error = settingsError;
