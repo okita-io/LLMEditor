@@ -467,6 +467,53 @@ body {
   overflow: hidden;
 }
 
+.editor-buffer-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.selection-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.selection-overlay.is-visible {
+  display: block;
+}
+
+.editor-body.show-ghost-selection #buffer {
+  caret-color: transparent;
+}
+
+.ghost-selection-rect {
+  position: absolute;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 1px;
+}
+
+.ghost-caret {
+  position: absolute;
+  width: 2px;
+  background: var(--accent);
+  animation: ghost-caret-blink 1.1s step-end infinite;
+}
+
+@keyframes ghost-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 .line-gutter {
   flex: 0 0 var(--gutter-width);
   overflow: hidden;
@@ -487,7 +534,15 @@ body {
   font-weight: 600;
 }
 
+.line-gutter .line-selected {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 2px;
+}
+
 #buffer {
+  position: relative;
+  z-index: 2;
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
