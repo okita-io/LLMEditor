@@ -12,6 +12,7 @@ Create a **super lightweight**, **open‑source**, **cross‑platform** (Windows
 - Has zero heavy dependencies, zero bundlers, and minimal build times
 
 ![SCREENSHOT](./docs/screenshot.jpg)
+
 ---
 
 ## **2. Tech Stack**
