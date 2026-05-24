@@ -1078,9 +1078,9 @@ function _applyAgentToolResult(el, name, result) {
  */
 function _scrollToToolResult(el, name, result) {
   const line =
-    name === "replace_line" || name === "replace_span"
+    name === "replace_line" || name === "replace_span" || name === "delete_span"
       ? Number(result.line)
-      : name === "replace_range"
+      : name === "replace_range" || name === "delete_lines" || name === "delete_range"
         ? Number(result.start_line)
         : name === "insert_text"
           ? Number(result.line)

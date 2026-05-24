@@ -22,6 +22,8 @@ import {
   replaceLine,
   replaceSpan,
   replaceRange,
+  deleteLines,
+  deleteSpan,
   deleteRange,
   executeTool,
   applyMutatingResult,
@@ -205,33 +207,56 @@ describe("replaceRange edge cases", () => {
   });
 });
 
-describe("deleteRange edge cases", () => {
+describe("deleteLines edge cases", () => {
   it("deleting all lines leaves a single empty line", () => {
-    const result = deleteRange("a\nb\nc", 1, 3);
+    const result = deleteLines("a\nb\nc", 1, 3);
     expect(result.ok).toBe(true);
     expect(result.text).toBe("");
     expect(result.deleted_lines).toBe(3);
   });
 
   it("handles reversed range", () => {
-    const result = deleteRange("a\nb\nc", 3, 1);
+    const result = deleteLines("a\nb\nc", 3, 1);
     expect(result.ok).toBe(true);
     expect(result.text).toBe("");
     expect(result.deleted_lines).toBe(3);
   });
 
   it("clamps to valid range on single-line doc", () => {
-    const result = deleteRange("only", 1, 999);
+    const result = deleteLines("only", 1, 999);
     expect(result.ok).toBe(true);
     expect(result.text).toBe("");
     expect(result.deleted_lines).toBe(1);
   });
 
   it("deletes a single line from the middle", () => {
-    const result = deleteRange("a\nb\nc\nd\ne", 3, 3);
+    const result = deleteLines("a\nb\nc\nd\ne", 3, 3);
     expect(result.ok).toBe(true);
     expect(result.text).toBe("a\nb\nd\ne");
     expect(result.deleted_lines).toBe(1);
+  });
+});
+
+describe("deleteSpan edge cases", () => {
+  it("deletes an inclusive column span", () => {
+    const result = deleteSpan("hello", 1, 2, 4);
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("ho");
+  });
+
+  it("swaps reversed column ranges", () => {
+    const result = deleteSpan("abcdef", 1, 5, 2);
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("af");
+  });
+});
+
+describe("deleteRange edge cases", () => {
+  it("delegates to deleteLines (legacy alias)", () => {
+    const result = deleteRange("a\nb\nc", 1, 2);
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("c");
+    expect(result.deleted_lines).toBe(2);
   });
 });
 

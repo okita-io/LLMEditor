@@ -11,6 +11,8 @@ import {
   replaceLine,
   replaceSpan,
   replaceRange,
+  deleteLines,
+  deleteSpan,
   deleteRange,
   executeTool,
 } from "../editor_tools.js";
@@ -106,13 +108,37 @@ describe("editor_tools.replaceRange", () => {
   });
 });
 
-describe("editor_tools.deleteRange", () => {
+describe("editor_tools.deleteLines", () => {
   it("deletes inclusive lines", () => {
-    const result = deleteRange("a\nb\nc", 1, 2);
+    const result = deleteLines("a\nb\nc", 1, 2);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.text).toBe("c");
       expect(result.deleted_lines).toBe(2);
+      expect(result.start_line).toBe(1);
+      expect(result.end_line).toBe(2);
+    }
+  });
+});
+
+describe("editor_tools.deleteSpan", () => {
+  it("deletes an inclusive column span within a line", () => {
+    const line = '"items1":["car", "bike", "motorcycle", "van", "train"],';
+    const result = deleteSpan(line, 1, 27, 36);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe('"items1":["car", "bike", "", "van", "train"],');
+    }
+  });
+});
+
+describe("editor_tools.deleteRange", () => {
+  it("delegates to deleteLines (legacy alias)", () => {
+    const result = deleteRange("a\nb\nc", 2, 2);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe("a\nc");
+      expect(result.deleted_lines).toBe(1);
     }
   });
 });
@@ -140,6 +166,33 @@ describe("editor_tools.executeTool", () => {
       { text: "hello" }
     );
     expect(result.new_text).toBe("hipo");
+  });
+
+  it("mutates via delete_lines", () => {
+    const result = executeTool(
+      "delete_lines",
+      { start_line: 2, end_line: 2 },
+      { text: "a\nb\nc" }
+    );
+    expect(result.new_text).toBe("a\nc");
+  });
+
+  it("mutates via delete_span", () => {
+    const result = executeTool(
+      "delete_span",
+      { line: 1, start_column: 2, end_column: 4 },
+      { text: "hello" }
+    );
+    expect(result.new_text).toBe("ho");
+  });
+
+  it("maps legacy delete_range to delete_lines", () => {
+    const result = executeTool(
+      "delete_range",
+      { start_line: 2, end_line: 2 },
+      { text: "a\nb\nc" }
+    );
+    expect(result.new_text).toBe("a\nc");
   });
 
   it("maps legacy replace_range single-line calls to replace_line", () => {

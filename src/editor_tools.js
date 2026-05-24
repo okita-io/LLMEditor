@@ -166,7 +166,7 @@ export function replaceSpan(text, line, startColumn, endColumn, replacement) {
  * @param {number} endLine 1-based inclusive
  * @param {string} replacement
  * @returns {{ ok: true, text: string, start_line: number, end_line: number } | { ok: false, error: string }}
- * @deprecated Legacy multi-line helper; prefer replace_line or delete_range + insert_text.
+ * @deprecated Legacy helper; prefer replace_line or delete_lines + insert_text.
  */
 export function replaceRange(text, startLine, endLine, replacement) {
   const lines = splitLines(text);
@@ -185,11 +185,22 @@ export function replaceRange(text, startLine, endLine, replacement) {
 
 /**
  * @param {string} text
+ * @param {number} line 1-based
+ * @param {number} startColumn 1-based inclusive
+ * @param {number} endColumn 1-based inclusive
+ * @returns {{ ok: true, text: string, line: number, start_column: number, end_column: number } | { ok: false, error: string }}
+ */
+export function deleteSpan(text, line, startColumn, endColumn) {
+  return replaceSpan(text, line, startColumn, endColumn, "");
+}
+
+/**
+ * @param {string} text
  * @param {number} startLine 1-based inclusive
  * @param {number} endLine 1-based inclusive
- * @returns {{ ok: true, text: string, deleted_lines: number } | { ok: false, error: string }}
+ * @returns {{ ok: true, text: string, start_line: number, end_line: number, deleted_lines: number } | { ok: false, error: string }}
  */
-export function deleteRange(text, startLine, endLine) {
+export function deleteLines(text, startLine, endLine) {
   const lines = splitLines(text);
   let start = clampLine(startLine, lines.length);
   let end = clampLine(endLine, lines.length);
@@ -197,7 +208,26 @@ export function deleteRange(text, startLine, endLine) {
   const deleted = end - start + 1;
   const updated = [...lines.slice(0, start - 1), ...lines.slice(end)];
   if (updated.length === 0) updated.push("");
-  return { ok: true, text: joinLines(updated), deleted_lines: deleted };
+  return {
+    ok: true,
+    text: joinLines(updated),
+    start_line: start,
+    end_line: end,
+    deleted_lines: deleted,
+  };
+}
+
+/**
+ * @param {string} text
+ * @param {number} startLine 1-based inclusive
+ * @param {number} endLine 1-based inclusive
+ * @returns {{ ok: true, text: string, deleted_lines: number } | { ok: false, error: string }}
+ * @deprecated Legacy alias for deleteLines.
+ */
+export function deleteRange(text, startLine, endLine) {
+  const result = deleteLines(text, startLine, endLine);
+  if (!result.ok) return result;
+  return { ok: true, text: result.text, deleted_lines: result.deleted_lines };
 }
 
 /**
@@ -295,8 +325,8 @@ export function executeTool(name, args, ctx) {
         new_text: result.text,
       });
     }
-    case "delete_range": {
-      const result = deleteRange(
+    case "delete_lines": {
+      const result = deleteLines(
         text,
         Number(args.start_line ?? 1),
         Number(args.end_line ?? 1)
@@ -304,6 +334,39 @@ export function executeTool(name, args, ctx) {
       if (!result.ok) return { ...result, changed: false };
       return withChanged({
         ok: true,
+        start_line: result.start_line,
+        end_line: result.end_line,
+        deleted_lines: result.deleted_lines,
+        new_text: result.text,
+      });
+    }
+    case "delete_span": {
+      const result = deleteSpan(
+        text,
+        Number(args.line ?? 1),
+        Number(args.start_column ?? 1),
+        Number(args.end_column ?? 1)
+      );
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
+        ok: true,
+        line: result.line,
+        start_column: result.start_column,
+        end_column: result.end_column,
+        new_text: result.text,
+      });
+    }
+    case "delete_range": {
+      const result = deleteLines(
+        text,
+        Number(args.start_line ?? 1),
+        Number(args.end_line ?? 1)
+      );
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
+        ok: true,
+        start_line: result.start_line,
+        end_line: result.end_line,
         deleted_lines: result.deleted_lines,
         new_text: result.text,
       });

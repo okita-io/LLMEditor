@@ -14,17 +14,17 @@ import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 const MAX_TURNS = 16;
 
 const APPLY_NUDGE =
-  "You described document changes in chat but did not apply them with tools. Use replace_line, replace_span, insert_text, or delete_range now to write those edits into the document. Do not send another prose-only reply until the tools have run.";
+  "You described document changes in chat but did not apply them with tools. Use replace_line, replace_span, insert_text, delete_lines, or delete_span now to write those edits into the document. Do not send another prose-only reply until the tools have run.";
 
 const THINKING_NUDGE =
-  "You responded with text but did not call any tools. Please use the provided tools (replace_line, replace_span, insert_text, delete_range, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
+  "You responded with text but did not call any tools. Please use the provided tools (replace_line, replace_span, insert_text, delete_lines, delete_span, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
 
 const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
 Use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
 Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
-Use replace_line to rewrite an entire line, replace_span to change part of a line (1-based inclusive columns), insert_text for insertions, delete_range to remove lines, and goto_line to inspect a specific line.
+Use replace_line to rewrite an entire line, replace_span to change part of a line, insert_text for insertions, delete_lines to remove whole lines, delete_span to remove part of a line (1-based inclusive columns), and goto_line to inspect a specific line.
 You MUST apply every document change with tools before your final reply. Do not paste JSON patches, outline snippets, or replacement text in chat as a substitute for tool calls — the chat panel is not the document.
 After tools succeed, summarize briefly in plain language only. If you proposed new sections (e.g. build-up, threshold), insert them with insert_text or replace_line.`;
 
@@ -64,7 +64,13 @@ function parseToolArguments(args) {
  * @property {(text: string) => void} [onUnappliedEditsHint]
  */
 
-const MUTATING_TOOLS = new Set(["insert_text", "replace_line", "replace_span", "delete_range"]);
+const MUTATING_TOOLS = new Set([
+  "insert_text",
+  "replace_line",
+  "replace_span",
+  "delete_lines",
+  "delete_span",
+]);
 
 /**
  * @typedef {object} RunAgentOptions

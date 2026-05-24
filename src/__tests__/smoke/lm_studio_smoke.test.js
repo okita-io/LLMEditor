@@ -74,14 +74,14 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     expect(el.value).toContain("gamma");
   }, config.timeoutMs);
 
-  it("delete_range: removes a marked line", async () => {
+  it("delete_lines: removes a marked line", async () => {
     const doc = "keep\nDELETE_THIS_LINE\nkeep2";
     const el = setupEditorHarness(doc);
     const { start, end } = selectSubstring(doc, "DELETE_THIS_LINE");
     selectRange(el, start, end);
 
     await editor.sendChatMessage(
-      "Use delete_range to delete line 2 (the selected DELETE_THIS_LINE line). Do not modify other lines."
+      "Use delete_lines to delete line 2 (the selected DELETE_THIS_LINE line). Set start_line and end_line both to 2. Do not modify other lines."
     );
 
     expect(el.value).not.toContain("DELETE_THIS_LINE");

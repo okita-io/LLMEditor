@@ -123,17 +123,34 @@ function normalizeToolObject(obj) {
   }
 
   if (
+    typeof obj.line !== "undefined" &&
+    typeof obj.start_column !== "undefined" &&
+    typeof obj.end_column !== "undefined" &&
+    typeof obj.text === "undefined"
+  ) {
+    return {
+      name: "delete_span",
+      args: {
+        line: obj.line,
+        start_column: obj.start_column,
+        end_column: obj.end_column,
+      },
+      source: "delete_span-shape",
+    };
+  }
+
+  if (
     typeof obj.start_line !== "undefined" &&
     typeof obj.end_line !== "undefined" &&
     typeof obj.text === "undefined"
   ) {
     return {
-      name: "delete_range",
+      name: "delete_lines",
       args: {
         start_line: obj.start_line,
         end_line: obj.end_line,
       },
-      source: "delete_range-shape",
+      source: "delete_lines-shape",
     };
   }
 
@@ -226,8 +243,8 @@ export function extractDocumentEdits(text) {
 
   // Inline JSON objects mentioning tool names (single-line tool payloads).
   const inlineRes = [
-    /\{\s*"tool"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
-    /\{\s*"name"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
+    /\{\s*"tool"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_lines|delete_span|delete_range|goto_line)"[\s\S]*?\}/g,
+    /\{\s*"name"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_lines|delete_span|delete_range|goto_line)"[\s\S]*?\}/g,
     /\{\s*"line"\s*:\s*\d+[\s\S]*?\}/g,
     /\{\s*"start_line"\s*:\s*\d+[\s\S]*?\}/g,
     /\{\s*"start_column"\s*:\s*\d+[\s\S]*?\}/g,
@@ -250,7 +267,7 @@ export function extractDocumentEdits(text) {
 
   // Function-call style: insert_text({...})
   const callRe =
-    /\b(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
+    /\b(insert_text|replace_line|replace_span|replace_range|delete_lines|delete_span|delete_range|goto_line)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
   callRe.lastIndex = 0;
   while ((match = callRe.exec(text)) !== null) {
     try {
@@ -271,6 +288,8 @@ export function extractDocumentEdits(text) {
       "replace_line",
       "replace_span",
       "replace_range",
+      "delete_lines",
+      "delete_span",
       "delete_range",
       "goto_line",
     ].includes(edit.name)

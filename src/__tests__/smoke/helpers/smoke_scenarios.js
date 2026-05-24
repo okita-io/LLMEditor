@@ -49,11 +49,11 @@ export const REPLACE_LINE_SCENARIOS = [
   {
     name: "collapse multiple lines into one inserted line",
     description: "LLM deletes a multi-line range and inserts a replacement line",
-    tool: "delete_range+insert_text",
+    tool: "delete_lines+insert_text",
     document: "keep\nremove_a\nremove_b\nremove_c\nkeep_end",
     selection: "remove_a\nremove_b\nremove_c",
     prompt:
-      "Use delete_range on lines 2-4, then use insert_text on line 2 at column 1 to insert exactly: COLLAPSED\\n (with a trailing newline). Keep keep and keep_end unchanged.",
+      "Use delete_lines on lines 2-4, then use insert_text on line 2 at column 1 to insert exactly: COLLAPSED\\n (with a trailing newline). Keep keep and keep_end unchanged.",
     validate: (result) => {
       if (!result.includes("COLLAPSED")) {
         return { pass: false, reason: "missing COLLAPSED" };
@@ -184,15 +184,15 @@ export const INSERT_TEXT_SCENARIOS = [
 ];
 
 /** @type {SmokeScenario[]} */
-export const DELETE_RANGE_SCENARIOS = [
+export const DELETE_LINES_SCENARIOS = [
   {
     name: "delete a single marked line",
     description: "LLM removes exactly one line from the document",
-    tool: "delete_range",
+    tool: "delete_lines",
     document: "keep\nDELETE_THIS_LINE\nkeep2",
     selection: "DELETE_THIS_LINE",
     prompt:
-      "Use delete_range to delete line 2 (the selected DELETE_THIS_LINE line). Do not modify other lines.",
+      "Use delete_lines to delete line 2 (the selected DELETE_THIS_LINE line). Set start_line and end_line both to 2. Do not modify other lines.",
     validate: (result) => {
       if (result.includes("DELETE_THIS_LINE")) {
         return { pass: false, reason: "line was not deleted" };
@@ -210,11 +210,11 @@ export const DELETE_RANGE_SCENARIOS = [
   {
     name: "delete multiple consecutive lines",
     description: "LLM removes a range of lines",
-    tool: "delete_range",
+    tool: "delete_lines",
     document: "header\ndelete_a\ndelete_b\ndelete_c\nfooter",
     selection: "delete_a\ndelete_b\ndelete_c",
     prompt:
-      "Use delete_range to delete lines 2 through 4 (delete_a, delete_b, delete_c). Keep header and footer.",
+      "Use delete_lines to delete lines 2 through 4 (delete_a, delete_b, delete_c). Keep header and footer.",
     validate: (result) => {
       if (
         result.includes("delete_a") ||
@@ -232,6 +232,33 @@ export const DELETE_RANGE_SCENARIOS = [
       }
       return { pass: true, reason: "multi-line delete correct" };
     },
+  },
+];
+
+/** @type {SmokeScenario[]} */
+export const DELETE_SPAN_SCENARIOS = [
+  {
+    name: "delete substring within a line",
+    description: "LLM removes part of a line without deleting the whole line",
+    tool: "delete_span",
+    document: '"items1":["car", "bike", "motorcycle", "van", "train"],',
+    selection: "motorcycle",
+    prompt:
+      'Use delete_span on line 1 to delete the word motorcycle (columns 27-36). Do not delete the whole line.',
+    validate: (result) => {
+      const expected = '"items1":["car", "bike", "", "van", "train"],';
+      if (result === expected) {
+        return { pass: true, reason: "span deleted correctly" };
+      }
+      if (result.includes("motorcycle")) {
+        return { pass: false, reason: "motorcycle still present" };
+      }
+      if (!result.includes('"items1"')) {
+        return { pass: false, reason: "whole line was deleted instead of span edit" };
+      }
+      return { pass: true, reason: "partial span delete applied" };
+    },
+    retries: 2,
   },
 ];
 
@@ -345,7 +372,8 @@ export const ALL_SCENARIOS = {
   replace_line: REPLACE_LINE_SCENARIOS,
   replace_span: REPLACE_SPAN_SCENARIOS,
   insert_text: INSERT_TEXT_SCENARIOS,
-  delete_range: DELETE_RANGE_SCENARIOS,
+  delete_lines: DELETE_LINES_SCENARIOS,
+  delete_span: DELETE_SPAN_SCENARIOS,
   context_window: CONTEXT_WINDOW_SCENARIOS,
   multi_tool: MULTI_TOOL_SCENARIOS,
   error_recovery: ERROR_RECOVERY_SCENARIOS,

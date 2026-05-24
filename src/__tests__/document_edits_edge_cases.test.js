@@ -88,13 +88,13 @@ describe("extractDocumentEdits — array of tool calls", () => {
     const text = `\`\`\`json
 {
   "tool_calls": [
-    {"type": "function", "function": {"name": "delete_range", "arguments": "{\\"start_line\\": 3, \\"end_line\\": 3}"}}
+    {"type": "function", "function": {"name": "delete_lines", "arguments": "{\\"start_line\\": 3, \\"end_line\\": 3}"}}
   ]
 }
 \`\`\``;
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
-    expect(edits[0].name).toBe("delete_range");
+    expect(edits[0].name).toBe("delete_lines");
   });
 });
 
@@ -140,12 +140,20 @@ describe("extractDocumentEdits — shape detection", () => {
     expect(edits[0].source).toBe("replace_span-shape");
   });
 
-  it("detects delete_range shape (start_line + end_line, no text)", () => {
+  it("detects delete_lines shape (start_line + end_line, no text)", () => {
     const text = '```json\n{"start_line": 2, "end_line": 4}\n```';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
-    expect(edits[0].name).toBe("delete_range");
-    expect(edits[0].source).toBe("delete_range-shape");
+    expect(edits[0].name).toBe("delete_lines");
+    expect(edits[0].source).toBe("delete_lines-shape");
+  });
+
+  it("detects delete_span shape (line + start_column + end_column, no text)", () => {
+    const text = '```json\n{"line": 2, "start_column": 10, "end_column": 19}\n```';
+    const edits = extractDocumentEdits(text);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].name).toBe("delete_span");
+    expect(edits[0].source).toBe("delete_span-shape");
   });
 });
 
@@ -175,11 +183,11 @@ describe("extractDocumentEdits — function-call style", () => {
     expect(edits[0].name).toBe("replace_line");
   });
 
-  it("extracts delete_range({})", () => {
+  it("extracts delete_lines from legacy delete_range function-call shape", () => {
     const text = 'delete_range({"start_line": 1, "end_line": 3})';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
-    expect(edits[0].name).toBe("delete_range");
+    expect(edits[0].name).toBe("delete_lines");
   });
 });
 
@@ -232,8 +240,8 @@ describe("assistantTextLooksLikeUnappliedEdits", () => {
     expect(assistantTextLooksLikeUnappliedEdits(text)).toBe(true);
   });
 
-  it("returns false for delete_range only (no insert/replace)", () => {
-    const text = '{"tool": "delete_range", "start_line": 1, "end_line": 1}';
+  it("returns false for delete_lines only (no insert/replace)", () => {
+    const text = '{"tool": "delete_lines", "start_line": 1, "end_line": 1}';
     expect(assistantTextLooksLikeUnappliedEdits(text)).toBe(false);
   });
 

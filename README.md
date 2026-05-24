@@ -240,7 +240,7 @@ npm test
 LLM_SMOKE=1 LLM_API_URL=http://10.0.1.5:1234/v1/chat/completions npm run test:smoke
 ```
 
-Smoke tests exercise the real agent loop against LM Studio: tool calls (`replace_line`, `replace_span`, `insert_text`, `delete_range`), the selection-centered context window on large files, and **Undo** after agent edits. They are skipped by default; set `LLM_SMOKE=1` to enable.
+Smoke tests exercise the real agent loop against LM Studio: tool calls (`replace_line`, `replace_span`, `insert_text`, `delete_lines`, `delete_span`), the selection-centered context window on large files, and **Undo** after agent edits. They are skipped by default; set `LLM_SMOKE=1` to enable.
 
 Optional env vars:
 

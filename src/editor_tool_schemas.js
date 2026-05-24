@@ -97,15 +97,40 @@ export function editorToolDefinitions() {
     {
       type: "function",
       function: {
-        name: "delete_range",
-        description: "Delete an inclusive 1-based line range.",
+        name: "delete_lines",
+        description:
+          "Delete one or more entire lines. start_line and end_line are 1-based and inclusive. To delete a single line, set both to that line number.",
         parameters: {
           type: "object",
           properties: {
-            start_line: { type: "integer", description: "First line (1-based)" },
-            end_line: { type: "integer", description: "Last line inclusive (1-based)" },
+            start_line: { type: "integer", description: "First line to delete (1-based)" },
+            end_line: { type: "integer", description: "Last line to delete (1-based, inclusive)" },
           },
           required: ["start_line", "end_line"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "delete_span",
+        description:
+          "Delete a character span within a single line. Use this to remove part of a line without deleting the whole line. Columns are 1-based and inclusive.",
+        parameters: {
+          type: "object",
+          properties: {
+            line: { type: "integer", description: "1-based line number" },
+            start_column: {
+              type: "integer",
+              description: "First column to delete (1-based, inclusive)",
+            },
+            end_column: {
+              type: "integer",
+              description: "Last column to delete (1-based, inclusive)",
+            },
+          },
+          required: ["line", "start_column", "end_column"],
           additionalProperties: false,
         },
       },
