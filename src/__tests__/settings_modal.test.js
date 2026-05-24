@@ -643,3 +643,59 @@ describe("Cancel button", () => {
     expect(inputValue("settings-model")).toBe("fresh-model");
   });
 });
+
+describe("Load models from LM Studio", () => {
+  /** @type {typeof fetch} */
+  let originalFetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("renders Load models control with the model field", async () => {
+    await open();
+    expect(document.querySelector("#settings-fetch-models")).not.toBeNull();
+    expect(document.querySelector("#settings-model-picker").hidden).toBe(true);
+  });
+
+  it("populates the picker and model field from /api/v1/models", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        data: [{ id: "qwen-7b" }, { id: "llama-3" }],
+      }),
+    }));
+
+    await open();
+    document.querySelector("#settings-fetch-models").click();
+    await vi.waitFor(() => {
+      expect(document.querySelector("#settings-model-picker").hidden).toBe(false);
+    });
+
+    const picker = document.querySelector("#settings-model-picker");
+    expect(Array.from(picker.options).map((o) => o.value)).toEqual([
+      "",
+      "llama-3",
+      "qwen-7b",
+    ]);
+
+    picker.value = "qwen-7b";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(inputValue("settings-model")).toBe("qwen-7b");
+  });
+
+  it("shows an inline error when the models request fails", async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 502 }));
+
+    await open();
+    document.querySelector("#settings-fetch-models").click();
+    await vi.waitFor(() => {
+      const err = document.querySelector('.field-error[data-field="model"]');
+      expect(err.textContent).toContain("HTTP 502");
+    });
+  });
+});

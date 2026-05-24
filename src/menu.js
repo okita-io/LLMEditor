@@ -278,14 +278,43 @@ function buildMenuItem(item, isAi) {
 }
 
 /**
- * Close every open menu dropdown.
+ * Close every open menu dropdown and release menu focus so
+ * `:focus-within` CSS does not keep the panel visible after native
+ * dialogs (Open / Save / Save As) return focus to the menu item.
  *
  * @returns {void}
  */
 function closeAllMenus() {
   if (typeof document === "undefined") return;
+  const menuBar = document.getElementById(MENU_BAR_ID);
   const menus = document.querySelectorAll("#menu-bar .menu.open");
   for (const menu of menus) menu.classList.remove("open");
+
+  const active = document.activeElement;
+  if (
+    menuBar &&
+    active &&
+    typeof active.blur === "function" &&
+    menuBar.contains(active)
+  ) {
+    active.blur();
+  }
+}
+
+/**
+ * Run an async menu action that may open a native dialog, keeping
+ * menus closed when focus returns to the WebView.
+ *
+ * @param {() => Promise<unknown>} run
+ * @returns {void}
+ */
+function runAsyncMenuAction(run) {
+  closeAllMenus();
+  Promise.resolve(run()).catch((err) => {
+    console.error("menu action failed:", err);
+  }).finally(() => {
+    closeAllMenus();
+  });
 }
 
 /**
@@ -506,19 +535,13 @@ function dispatchAction(action /*, opts */) {
 
   switch (action) {
     case ACTIONS.OPEN:
-      Promise.resolve(editor.openFile()).catch((err) =>
-        console.error("openFile failed:", err)
-      );
+      runAsyncMenuAction(() => editor.openFile());
       return;
     case ACTIONS.SAVE:
-      Promise.resolve(editor.saveFile()).catch((err) =>
-        console.error("saveFile failed:", err)
-      );
+      runAsyncMenuAction(() => editor.saveFile());
       return;
     case ACTIONS.SAVE_AS:
-      Promise.resolve(editor.saveFileAs()).catch((err) =>
-        console.error("saveFileAs failed:", err)
-      );
+      runAsyncMenuAction(() => editor.saveFileAs());
       return;
     case ACTIONS.QUIT:
       requestQuit();
@@ -659,4 +682,5 @@ export const _internal = {
   ACTIONS,
   matchShortcut,
   dispatchAction,
+  closeAllMenus,
 };

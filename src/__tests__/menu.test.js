@@ -578,3 +578,48 @@ describe("Menu-item click dispatch", () => {
     expect(editor.redo).toHaveBeenCalledTimes(1);
   });
 });
+
+/* ---------------- Menu dropdown close --------------------------- */
+
+describe("Menu dropdown close after native dialogs", () => {
+  beforeEach(() => stubPlatform(false));
+
+  it("closeAllMenus removes open state and blurs menu focus", () => {
+    menu.buildMenuBar();
+    const fileMenu = document.querySelector('[data-menu="file"]');
+    fileMenu.classList.add("open");
+    const openItem = document.querySelector('[data-action="open"]');
+    openItem.focus();
+
+    menu._internal.closeAllMenus();
+
+    expect(fileMenu.classList.contains("open")).toBe(false);
+    expect(fileMenu.contains(document.activeElement)).toBe(false);
+  });
+
+  it("re-closes File menu after Open completes when focus returns to the menu item", async () => {
+    menu.buildMenuBar();
+    const fileMenu = document.querySelector('[data-menu="file"]');
+    const openItem = document.querySelector('[data-action="open"]');
+
+    /** @type {(() => void) | undefined} */
+    let resolveOpen;
+    editor.openFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveOpen = resolve;
+        })
+    );
+
+    openItem.click();
+    expect(fileMenu.classList.contains("open")).toBe(false);
+
+    openItem.focus();
+    expect(fileMenu.contains(document.activeElement)).toBe(true);
+
+    resolveOpen?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fileMenu.contains(document.activeElement)).toBe(false);
+  });
+});

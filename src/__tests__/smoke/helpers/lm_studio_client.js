@@ -4,6 +4,7 @@
 // Live LM Studio HTTP client for smoke tests (no Tauri required).
 
 import { editorToolDefinitions } from "../../../editor_tool_schemas.js";
+import { fetchLmStudioModels, lmStudioBaseUrl, lmStudioModelsUrl } from "../../../lm_studio_models.js";
 
 const DEFAULT_API_URL = "http://10.0.1.5:1234/v1/chat/completions";
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -33,9 +34,7 @@ export function getSmokeConfig() {
  * @param {string} apiUrl
  * @returns {string}
  */
-export function lmStudioBaseUrl(apiUrl) {
-  return apiUrl.replace(/\/v1\/chat\/completions\/?$/, "");
-}
+export { lmStudioBaseUrl, lmStudioModelsUrl };
 
 /**
  * @param {string} url
@@ -62,10 +61,9 @@ async function fetchWithTimeout(url, init = {}, timeoutMs = 10_000) {
  * @returns {Promise<boolean>}
  */
 export async function pingLmStudio(apiUrl) {
-  const base = lmStudioBaseUrl(apiUrl);
   try {
-    const res = await fetchWithTimeout(`${base}/v1/models`, {}, 10_000);
-    return res.ok;
+    const models = await fetchLmStudioModels(apiUrl);
+    return models.length > 0;
   } catch {
     return false;
   }
@@ -80,22 +78,8 @@ export async function resolveSmokeModel(apiUrl, preferredModel) {
   if (typeof preferredModel === "string" && preferredModel.length > 0) {
     return preferredModel;
   }
-  const base = lmStudioBaseUrl(apiUrl);
-  const res = await fetchWithTimeout(`${base}/v1/models`, {}, 10_000);
-  if (!res.ok) {
-    throw new Error(`LM Studio models request failed: HTTP ${res.status}`);
-  }
-  const body = await res.json();
-  const models = Array.isArray(body.data) ? body.data : [];
-  if (models.length === 0) {
-    throw new Error("LM Studio returned no loaded models");
-  }
-  const first = models[0];
-  const id = first && typeof first.id === "string" ? first.id : null;
-  if (!id) {
-    throw new Error("LM Studio model entry missing id");
-  }
-  return id;
+  const models = await fetchLmStudioModels(apiUrl);
+  return models[0];
 }
 
 /**

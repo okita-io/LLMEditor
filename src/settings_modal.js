@@ -43,6 +43,7 @@
 
 import * as api from "./api.js";
 import * as editor from "./editor.js";
+import { fetchLmStudioModels } from "./lm_studio_models.js";
 
 /* -------------------------------------------------------------------- */
 /* Validation bounds (mirror Rust `Settings::validate_field`).          */
@@ -387,11 +388,51 @@ function ensureModalBuilt() {
     return i;
   });
 
-  addField("settings-model", "model", "Model", () => {
-    const i = document.createElement("input");
-    i.type = "text";
-    return i;
+  const modelLabel = document.createElement("label");
+  modelLabel.textContent = "Model ";
+  const modelRow = document.createElement("div");
+  modelRow.className = "settings-model-row";
+
+  const modelInput = document.createElement("input");
+  modelInput.type = "text";
+  modelInput.id = "settings-model";
+  modelInput.name = "model";
+  modelRow.appendChild(modelInput);
+
+  const fetchModelsBtn = document.createElement("button");
+  fetchModelsBtn.type = "button";
+  fetchModelsBtn.id = "settings-fetch-models";
+  fetchModelsBtn.className = "settings-fetch-models-btn";
+  fetchModelsBtn.textContent = "Load models";
+  fetchModelsBtn.addEventListener("click", () => {
+    void onFetchModels();
   });
+  modelRow.appendChild(fetchModelsBtn);
+
+  modelLabel.appendChild(modelRow);
+
+  const modelPicker = document.createElement("select");
+  modelPicker.id = "settings-model-picker";
+  modelPicker.className = "settings-model-picker";
+  modelPicker.hidden = true;
+  const modelPickerPlaceholder = document.createElement("option");
+  modelPickerPlaceholder.value = "";
+  modelPickerPlaceholder.textContent = "Select a model…";
+  modelPicker.appendChild(modelPickerPlaceholder);
+  modelPicker.addEventListener("change", () => {
+    if (modelPicker.value.length > 0) {
+      setInputValue("settings-model", modelPicker.value);
+      setFieldError("model", "");
+    }
+  });
+  modelLabel.appendChild(modelPicker);
+
+  form.appendChild(modelLabel);
+
+  const modelErr = document.createElement("span");
+  modelErr.className = "field-error";
+  modelErr.dataset.field = "model";
+  form.appendChild(modelErr);
 
   addField("settings-temperature", "temperature", "Temperature", () => {
     const i = document.createElement("input");
@@ -582,6 +623,98 @@ function applySettingsToForm(settings) {
   setInputValue("settings-system-prompt", merged.system_prompt);
 }
 
+function setFieldError(field, text) {
+  if (!modalEl) return;
+  const span = modalEl.querySelector(`.field-error[data-field="${field}"]`);
+  if (span) span.textContent = typeof text === "string" ? text : "";
+}
+
+/**
+ * Hide and reset the model picker dropdown.
+ *
+ * @returns {void}
+ */
+function resetModelPicker() {
+  if (!modalEl) return;
+  const picker = modalEl.querySelector("#settings-model-picker");
+  if (!picker) return;
+  picker.hidden = true;
+  picker.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a model…";
+  picker.appendChild(placeholder);
+  picker.value = "";
+}
+
+/**
+ * Populate the model picker from LM Studio and show it.
+ *
+ * @param {string[]} modelIds
+ * @returns {void}
+ */
+function showModelPicker(modelIds) {
+  if (!modalEl) return;
+  const picker = modalEl.querySelector("#settings-model-picker");
+  if (!picker) return;
+
+  resetModelPicker();
+  const current = getInputValue("settings-model");
+
+  for (const id of modelIds) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    picker.appendChild(opt);
+  }
+
+  picker.hidden = false;
+  if (current.length > 0 && modelIds.includes(current)) {
+    picker.value = current;
+  }
+}
+
+/**
+ * Request available models from the configured API URL and populate
+ * the model picker.
+ *
+ * @returns {Promise<void>}
+ */
+async function onFetchModels() {
+  if (!modalEl) return;
+
+  const fetchBtn = modalEl.querySelector("#settings-fetch-models");
+  const apiUrl = getInputValue("settings-api-url");
+  const apiCheck = validateField("api_url", apiUrl);
+  if (!apiCheck.ok) {
+    setFieldError("api_url", apiCheck.reason);
+    return;
+  }
+
+  setFieldError("model", "");
+  if (fetchBtn) {
+    fetchBtn.disabled = true;
+    fetchBtn.textContent = "Loading…";
+  }
+
+  try {
+    const models = await fetchLmStudioModels(apiUrl);
+    showModelPicker(models);
+  } catch (err) {
+    resetModelPicker();
+    const reason =
+      err && typeof err === "object" && "message" in err
+        ? String(err.message)
+        : String(err);
+    setFieldError("model", reason);
+  } finally {
+    if (fetchBtn) {
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = "Load models";
+    }
+  }
+}
+
 /**
  * Clear every per-field inline error span and the modal-footer error.
  */
@@ -685,6 +818,7 @@ export async function open() {
 
   ensureModalBuilt();
   clearFieldErrors();
+  resetModelPicker();
 
   let loaded;
   let loadError = null;

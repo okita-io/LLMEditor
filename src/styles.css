@@ -659,6 +659,44 @@ body {
   color: var(--text-muted);
 }
 
+.settings-model-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.settings-model-row #settings-model {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-fetch-models-btn {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-fetch-models-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-fetch-models-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-model-picker {
+  margin-top: 4px;
+}
+
 .modal-content input,
 .modal-content select,
 .modal-content textarea {
