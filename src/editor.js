@@ -460,6 +460,50 @@ export async function openFile(path) {
 }
 
 /**
+ * Create a new empty file at a user-chosen path via the native save
+ * dialog, then bind the Buffer to that path.
+ *
+ * Flow mirrors `openFile()` for the dirty-buffer guard, then opens
+ * the Save As dialog with a `.txt` suggested extension (Req 6.1
+ * default). On confirm the backend writes an empty file and the
+ * buffer is replaced with blank contents.
+ *
+ * @returns {Promise<void>}
+ */
+export async function newFile() {
+  if (!bufferEl) return;
+
+  if (isDirty()) {
+    const choice = await _promptDirtyBuffer();
+    if (choice === "cancel") return;
+    if (choice === "save") {
+      const saved = await saveFile();
+      if (saved === false) return;
+    }
+  }
+
+  let picked;
+  try {
+    picked = await _invokeSaveDialog(".txt");
+  } catch (err) {
+    _emitStatus(_errorMessage(err));
+    return;
+  }
+  if (picked === null || picked === undefined) {
+    return;
+  }
+
+  try {
+    await api.saveFile(picked, "");
+  } catch (err) {
+    _emitStatus(_errorMessage(err));
+    return;
+  }
+  _replaceBufferOnOpen("", picked);
+  _emitStatus("");
+}
+
+/**
  * Save the current Buffer to its associated path (Req 5).
  *
  * Per Req 18.17, every code path of `saveFile` MUST leave both undo

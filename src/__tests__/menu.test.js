@@ -45,6 +45,7 @@ import * as menu from "../menu.js";
  * non-throwing stubs so dispatchAction's promise wrappers resolve. */
 vi.mock("../editor.js", () => {
   return {
+    newFile: vi.fn(async () => undefined),
     openFile: vi.fn(async () => undefined),
     saveFile: vi.fn(async () => undefined),
     saveFileAs: vi.fn(async () => undefined),
@@ -104,6 +105,7 @@ beforeEach(() => {
   }
   editor.isStreamActive.mockImplementation(() => false);
   editor.openFile.mockImplementation(async () => undefined);
+  editor.newFile.mockImplementation(async () => undefined);
   editor.saveFile.mockImplementation(async () => undefined);
   editor.saveFileAs.mockImplementation(async () => undefined);
   editor.sendToLLM.mockImplementation(async () => undefined);
@@ -139,13 +141,14 @@ describe("buildMenuBar — DOM structure (Req 2.1-2.5)", () => {
     expect(labels).toEqual(["File", "Edit", "AI", "Help"]);
   });
 
-  it("renders File menu items in Open/Save/Save As/Quit order", async () => {
+  it("renders File menu items in New/Open/Save/Save As/Quit order", async () => {
     stubPlatform(false);
     
     menu.buildMenuBar();
     const file = document.querySelector('[data-menu="file"]');
     const items = file.querySelectorAll(".menu-item-label");
     expect(Array.from(items).map((i) => i.textContent)).toEqual([
+      "New...",
       "Open",
       "Save",
       "Save As",
@@ -261,6 +264,16 @@ function pressKey(key, mods = {}) {
 describe("Keyboard shortcuts on Windows (Ctrl modifier)", () => {
   beforeEach(() => stubPlatform(false));
 
+  it("Ctrl+N fires editor.newFile and preventDefaults", async () => {
+    
+    menu.buildMenuBar();
+
+    const e = pressKey("n", { ctrl: true });
+
+    expect(e.defaultPrevented).toBe(true);
+    expect(editor.newFile).toHaveBeenCalledTimes(1);
+  });
+
   it("Ctrl+O fires editor.openFile and preventDefaults (Req 3.1)", async () => {
     
     menu.buildMenuBar();
@@ -323,6 +336,14 @@ describe("Keyboard shortcuts on Windows (Ctrl modifier)", () => {
 
 describe("Keyboard shortcuts on macOS (Cmd / metaKey modifier)", () => {
   beforeEach(() => stubPlatform(true));
+
+  it("Cmd+N fires editor.newFile", async () => {
+    
+    menu.buildMenuBar();
+    const e = pressKey("n", { meta: true });
+    expect(e.defaultPrevented).toBe(true);
+    expect(editor.newFile).toHaveBeenCalledTimes(1);
+  });
 
   it("Cmd+O fires editor.openFile (Req 3.1)", async () => {
     
@@ -562,6 +583,13 @@ describe("Menu-item click dispatch", () => {
     menu.buildMenuBar();
     document.querySelector('[data-action="open"]').click();
     expect(editor.openFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking File → New... fires editor.newFile", async () => {
+    
+    menu.buildMenuBar();
+    document.querySelector('[data-action="new"]').click();
+    expect(editor.newFile).toHaveBeenCalledTimes(1);
   });
 
   it("clicking Edit → Undo fires editor.undo", async () => {

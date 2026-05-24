@@ -73,6 +73,7 @@ function isMac() {
  * handler.
  */
 const ACTIONS = {
+  NEW: "new",
   OPEN: "open",
   SAVE: "save",
   SAVE_AS: "save_as",
@@ -97,6 +98,7 @@ const ACTIONS = {
  * WebView still routes it to us, but we suppress it for safety).
  */
 const DOCUMENT_MODIFYING = new Set([
+  ACTIONS.NEW,
   ACTIONS.OPEN,
   ACTIONS.SAVE,
   ACTIONS.SAVE_AS,
@@ -116,6 +118,7 @@ const MENUS = [
   {
     label: "File",
     items: [
+      { label: "New...", action: ACTIONS.NEW, shortcut: "N" },
       { label: "Open", action: ACTIONS.OPEN, shortcut: "O" },
       { label: "Save", action: ACTIONS.SAVE, shortcut: "S" },
       { label: "Save As", action: ACTIONS.SAVE_AS, shortcut: "Shift+S" },
@@ -405,6 +408,7 @@ function matchShortcut(e) {
   const shift = e.shiftKey === true;
 
   // Document-modifying shortcuts (Req 3.1-3.4).
+  if (key === "n" && !shift) return ACTIONS.NEW;
   if (key === "o" && !shift) return ACTIONS.OPEN;
   if (key === "s" && !shift) return ACTIONS.SAVE;
   if (key === "s" && shift) return ACTIONS.SAVE_AS;
@@ -534,6 +538,9 @@ function dispatchAction(action /*, opts */) {
   }
 
   switch (action) {
+    case ACTIONS.NEW:
+      runAsyncMenuAction(() => editor.newFile());
+      return;
     case ACTIONS.OPEN:
       runAsyncMenuAction(() => editor.openFile());
       return;

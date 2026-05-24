@@ -520,6 +520,150 @@ describe("editor.saveFileAs — failure (Req 6.6)", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* newFile()                                                           */
+/* ------------------------------------------------------------------ */
+
+describe("editor.newFile — cancel leaves state unchanged", () => {
+  it("returns without writing when the save dialog resolves to null", async () => {
+    const el = installBuffer("seed");
+    editor.initialize();
+    const calls = installTauri();
+    editor._setFileDialogsForTests({
+      save: async () => null,
+    });
+
+    await editor.newFile();
+
+    expect(el.value).toBe("seed");
+    expect(editor._stateForTests().currentPath).toBeNull();
+    expect(calls.filter((c) => c.cmd === "save_file")).toHaveLength(0);
+  });
+});
+
+describe("editor.newFile — success", () => {
+  it("writes an empty file and binds the buffer to the chosen path", async () => {
+    const el = installBuffer("old content");
+    editor.initialize();
+    const calls = installTauri();
+    editor._setFileDialogsForTests({
+      save: async (suggestedExt) => {
+        expect(suggestedExt).toBe(".txt");
+        return "/tmp/fresh.txt";
+      },
+    });
+
+    await editor.newFile();
+
+    expect(el.value).toBe("");
+    expect(editor._stateForTests().currentPath).toBe("/tmp/fresh.txt");
+    expect(editor.isDirty()).toBe(false);
+    expect(calls.filter((c) => c.cmd === "save_file")).toHaveLength(1);
+    expect(calls[0].args).toEqual({ path: "/tmp/fresh.txt", contents: "" });
+  });
+
+  it("creates a JSON file when the user picks a .json path", async () => {
+    const el = installBuffer("");
+    editor.initialize();
+    const calls = installTauri();
+    editor._setFileDialogsForTests({
+      save: async () => "/tmp/data.json",
+    });
+
+    await editor.newFile();
+
+    expect(el.value).toBe("");
+    expect(editor._stateForTests().currentPath).toBe("/tmp/data.json");
+    expect(calls[0].args).toEqual({ path: "/tmp/data.json", contents: "" });
+  });
+
+  it("clears undo and redo stacks on success", async () => {
+    installBuffer("x");
+    editor.initialize();
+    editor._setUndoStackForTests([
+      {
+        source: "typing",
+        beforeSelection: { start: 0, end: 0 },
+        afterSelection: { start: 0, end: 0 },
+        changes: [],
+        lastAppendedAt: 0,
+      },
+    ]);
+    installTauri();
+    editor._setFileDialogsForTests({ save: async () => "/tmp/new.txt" });
+
+    await editor.newFile();
+
+    const { undoStack, redoStack } = editor._undoRedoStateForTests();
+    expect(undoStack).toHaveLength(0);
+    expect(redoStack).toHaveLength(0);
+  });
+});
+
+describe("editor.newFile — dirty-buffer prompt", () => {
+  it("Cancel aborts without invoking the save dialog", async () => {
+    const el = installBuffer("seed");
+    editor.initialize();
+    el.value = "edited";
+    let dialogCalls = 0;
+    editor._setFileDialogsForTests({
+      save: async () => {
+        dialogCalls += 1;
+        return "/tmp/x.txt";
+      },
+      prompt: async () => "cancel",
+    });
+    installTauri();
+
+    await editor.newFile();
+
+    expect(el.value).toBe("edited");
+    expect(dialogCalls).toBe(0);
+  });
+
+  it("Discard proceeds without saving the dirty buffer", async () => {
+    const el = installBuffer("seed");
+    editor.initialize();
+    editor._replaceBufferOnOpen("seed", "/tmp/old.txt");
+    el.value = "edited";
+    const calls = installTauri();
+    editor._setFileDialogsForTests({
+      save: async () => "/tmp/new.txt",
+      prompt: async () => "discard",
+    });
+
+    await editor.newFile();
+
+    expect(calls.filter((c) => c.cmd === "save_file")).toHaveLength(1);
+    expect(calls[0].args.path).toBe("/tmp/new.txt");
+    expect(el.value).toBe("");
+    expect(editor._stateForTests().currentPath).toBe("/tmp/new.txt");
+  });
+});
+
+describe("editor.newFile — failure", () => {
+  it("dispatches the error verbatim and leaves state unchanged", async () => {
+    const el = installBuffer("seed");
+    editor.initialize();
+    installTauri({
+      saveImpl: async () => {
+        throw "could not save file: permission denied";
+      },
+    });
+    const cap = captureStatusMessages();
+    editor._setFileDialogsForTests({
+      save: async () => "/tmp/new.txt",
+    });
+
+    await editor.newFile();
+
+    expect(el.value).toBe("seed");
+    expect(editor._stateForTests().currentPath).toBeNull();
+    expect(cap.messages).toContain("could not save file: permission denied");
+    cap.teardown();
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* currentFilePath() public accessor                                   */
 /* ------------------------------------------------------------------ */
 
