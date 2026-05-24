@@ -1,0 +1,1131 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 okita.io
+//
+// LLIMEdit — llm_client.rs
+//
+// LLM_Client surface for the non-streaming `call_llm` Tauri command (Task
+// 13). Two public items live here:
+//
+//   - `build_body(text, &Settings, stream: bool) -> serde_json::Value`:
+//     constructs the OpenAI-compatible chat-completions request body
+//     exactly per design.md. The `stream` flag is forwarded as the JSON
+//     `"stream"` field so this single helper serves both `call_blocking`
+//     (Task 13, `stream:false`) and the future `start_stream` task
+//     (Task 15, `stream:true`).
+//
+//   - `call_blocking(text, &Settings) -> Result<String, LlmError>`:
+//     posts a non-streaming request, awaits the JSON, and returns
+//     `choices[0].message.content`. Errors map onto the same `LlmError`
+//     variants used by the streaming path (Req 14.1, 14.3, 14.4, 14.5)
+//     so the `Status_Bar` reason text is identical regardless of which
+//     command surfaced the failure.
+//
+// The `reqwest::Client` is built exactly once per process via
+// `std::sync::OnceLock`. The configuration is the design-pinned set of
+// connection-tuning options:
+//
+//   - `connect_timeout(5s)` — Req 14.1, surfaces as `LlmError::ConnectionFailed`.
+//   - `pool_idle_timeout(None)` — keep idle connections alive for the life
+//     of the process so streaming reconnects skip the TCP handshake.
+//   - `tcp_nodelay(true)` — every SSE chunk is small; disable Nagle so
+//     tokens reach the WebView with minimal latency.
+//   - `redirect::Policy::limited(3)` — bounded so a misconfigured
+//     LM Studio cannot tarpit us into an infinite redirect loop.
+//
+// Building the client once-per-process matters: `reqwest::Client` owns a
+// connection pool, and constructing it per call would defeat keep-alive.
+//
+// References:
+// - Requirements:
+//     12.1 — `messages` ends with the user message (selection or full buffer).
+//     12.2 — `messages` user-message content equals the resolved text.
+//     12.4 — body fields: `model`, `messages`, `temperature`, `max_tokens`, `stream`.
+//     12.5 — non-empty `system_prompt` prepends a `system` role message.
+//     14.1 — connect timeout maps to `"connection failed"`.
+//     14.3 — non-200 maps to a string containing the decimal status.
+//     14.4 — unparseable response maps to `"invalid response"`.
+//     14.5 — mid-stream / mid-call connection drop maps to `"connection lost"`.
+//     15.3 — `call_llm(text, settings)` Tauri command on the public surface.
+// - design.md:
+//     "llm_client.rs" public-API and request-body snippets.
+//     "Backend error catalog" — exact `Status_Bar` reason strings.
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+
+use crate::error::LlmError;
+use crate::settings::Settings;
+
+// -----------------------------------------------------------------------------
+// Process-wide reqwest::Client
+// -----------------------------------------------------------------------------
+
+/// One `reqwest::Client` per process. `OnceLock` keeps the build call
+/// behind a single happens-before edge without pulling in `once_cell`.
+///
+/// The closure inside `get_or_init` runs at most once. If the build ever
+/// fails (an extremely unlikely event on a stock rustls toolchain — the
+/// constructor's documented failure modes are TLS init issues), we fall
+/// back to `reqwest::Client::new()` so the rest of the call surface still
+/// produces an `LlmError` rather than a panic. The resulting (default)
+/// client has no `connect_timeout`; in that degenerate path we'd lose the
+/// 5s budget, but the caller's `is_connect`/`is_timeout` mapping still
+/// fires correctly for `LlmError::ConnectionFailed` once the OS errors out.
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .pool_idle_timeout(None)
+            .tcp_nodelay(true)
+            .redirect(reqwest::redirect::Policy::limited(3))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+// -----------------------------------------------------------------------------
+// build_body (Req 12.1, 12.2, 12.4, 12.5)
+// -----------------------------------------------------------------------------
+
+/// Construct the request body for `call_llm` / `stream_llm`.
+///
+/// Layout (in order):
+///
+///   - `model`        — `s.model` verbatim.
+///   - `messages`     — system message prepended iff `s.system_prompt` is
+///                      non-empty (Req 12.5), followed by the single user
+///                      message carrying `text` (Req 12.1, 12.2).
+///   - `temperature`  — `s.temperature`.
+///   - `max_tokens`   — `s.max_tokens`.
+///   - `stream`       — forwarded from the caller; `false` for `call_blocking`,
+///                      `true` for `start_stream`.
+///
+/// The function is a pure transformation over its two arguments — no IO,
+/// no side effects — so the unit tests below cover every documented
+/// invariant deterministically.
+pub fn build_body(text: &str, s: &Settings, stream: bool) -> Value {
+    let mut messages: Vec<Value> = Vec::with_capacity(2);
+    if !s.system_prompt.is_empty() {
+        messages.push(json!({ "role": "system", "content": s.system_prompt }));
+    }
+    messages.push(json!({ "role": "user", "content": text }));
+
+    json!({
+        "model": s.model,
+        "messages": messages,
+        "temperature": s.temperature,
+        "max_tokens": s.max_tokens,
+        "stream": stream,
+    })
+}
+
+// -----------------------------------------------------------------------------
+// call_blocking (Req 15.3, 14.1, 14.3, 14.4, 14.5)
+// -----------------------------------------------------------------------------
+
+/// POST a non-streaming chat-completions request to `settings.api_url` and
+/// return `choices[0].message.content`.
+///
+/// Error mapping matches the streaming path so the `Status_Bar` reason is
+/// the same regardless of which command produced it:
+///
+///   - Connect timeout / connect failure (`is_connect()` or `is_timeout()`)
+///     → `LlmError::ConnectionFailed`           ("connection failed")
+///   - HTTP status != 200
+///     → `LlmError::HttpStatus(code)`           ("HTTP {code}")
+///   - JSON parse failure or missing/empty `choices` array
+///     → `LlmError::InvalidResponse`            ("invalid response")
+///   - Any other request error (mid-flight body drop, reset, etc.)
+///     → `LlmError::ConnectionLost`             ("connection lost")
+///
+/// The classification order matters: `is_connect()` and `is_timeout()` are
+/// both checked before the connection-lost fallback so a 5s connect-timeout
+/// surfaces `"connection failed"` rather than `"connection lost"`. The
+/// post-status read failures (a server that prematurely closes the body)
+/// fall through to `ConnectionLost`.
+pub async fn call_blocking(text: &str, settings: &Settings) -> Result<String, LlmError> {
+    let body = build_body(text, settings, false);
+
+    let response = http_client()
+        .post(&settings.api_url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(map_request_error)?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(LlmError::HttpStatus(status.as_u16()));
+    }
+
+    // Body deserialization failure during the JSON read can be either a
+    // bona fide parse failure or a mid-flight connection drop. `reqwest`'s
+    // `json::<Value>()` collapses both into a single error, so we
+    // re-classify here: if the underlying error reports a connection
+    // problem (`is_connect`, `is_timeout`, `is_request`, `is_body`), it's
+    // `ConnectionLost`; otherwise it's `InvalidResponse` (Req 14.4 vs 14.5).
+    let envelope: Value = response
+        .json::<Value>()
+        .await
+        .map_err(classify_body_error)?;
+
+    extract_first_choice_content(&envelope).ok_or(LlmError::InvalidResponse)
+}
+
+/// Pull `choices[0].message.content` out of the chat-completions envelope.
+///
+/// Returns `None` when the envelope is missing `choices`, the array is
+/// empty, the first entry has no `message.content`, or the content is not
+/// a JSON string. The caller maps `None` onto `LlmError::InvalidResponse`
+/// (Req 14.4); keeping the JSON traversal in a separate pure function
+/// makes the success path of `call_blocking` linear and lets the unit
+/// tests below exercise every malformed-shape branch without standing up
+/// an HTTP server.
+fn extract_first_choice_content(envelope: &Value) -> Option<String> {
+    let choices = envelope.get("choices")?.as_array()?;
+    let first = choices.first()?;
+    let content = first.get("message")?.get("content")?.as_str()?;
+    Some(content.to_string())
+}
+
+/// Map a `reqwest::Error` from `send()` onto an `LlmError`.
+///
+/// `send()` covers the full request lifecycle through the response
+/// headers: connect, TLS handshake, request write, and response status
+/// line. A connect-side failure (connect refused, DNS failure, TLS
+/// handshake) is the design-mandated `"connection failed"`; the 5s
+/// `connect_timeout` surfaces here as `is_timeout()` (the timer fires
+/// before any bytes leave the host). Anything else at this stage is a
+/// dropped/reset connection mid-handshake or mid-write — Req 14.5's
+/// `"connection lost"`.
+fn map_request_error(err: reqwest::Error) -> LlmError {
+    if err.is_connect() || err.is_timeout() {
+        LlmError::ConnectionFailed
+    } else {
+        LlmError::ConnectionLost
+    }
+}
+
+/// Map a `reqwest::Error` from `json()` (post-200 body read) onto an
+/// `LlmError`.
+///
+/// `json()` is "decode the body bytes as JSON". Two failure modes:
+///   - the body was received in full but is not valid JSON for the
+///     chat-completions shape — `LlmError::InvalidResponse` (Req 14.4).
+///   - the connection dropped mid-body, leaving truncated bytes behind —
+///     surfaced by `reqwest` as `is_body()` / `is_request()` /
+///     `is_timeout()` and mapped to `LlmError::ConnectionLost` (Req 14.5).
+fn classify_body_error(err: reqwest::Error) -> LlmError {
+    if err.is_body() || err.is_request() || err.is_timeout() || err.is_connect() {
+        LlmError::ConnectionLost
+    } else {
+        LlmError::InvalidResponse
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SSE parser (Task 14, Req 13.1, 14.4)
+// -----------------------------------------------------------------------------
+
+/// Stateful Server-Sent-Events parser for the OpenAI streaming chat
+/// completions wire format used by LM Studio.
+///
+/// The parser is designed to be fed the raw byte chunks produced by
+/// `reqwest::Response::bytes_stream()` exactly as they arrive — a single
+/// network read may carry multiple SSE records, half a record, or a
+/// fraction of a multi-byte UTF-8 character mid-record. The parser
+/// accumulates bytes into an internal `Vec<u8>` and surfaces zero or more
+/// `SseEvent`s per `push()` call once full records (terminated by `\n\n`)
+/// land in the buffer.
+///
+/// Wire format (per design.md "SSE parser is intentionally minimal"):
+///
+/// ```text
+/// data: {"choices":[{"delta":{"content":"hello"}}]}\n\n
+/// data: [DONE]\n\n
+/// ```
+///
+/// Per design step 1–6:
+///   1. Append incoming bytes to an accumulator.
+///   2. Split on `\n\n` to extract one record per slot.
+///   3. Strip the leading `data:` prefix (and any space that follows).
+///   4. `[DONE]` payload → `SseEvent::Done`.
+///   5. Otherwise parse with `serde_json::from_str::<ChunkEnvelope>` and
+///      pull `choices[0].delta.content`. Emit only when present and
+///      non-empty.
+///   6. Any deserialization failure (or non-UTF-8 record bytes) aborts
+///      with `InvalidResponse`, which the streaming task maps onto
+///      `LlmError::InvalidResponse` → `"invalid response"` (Req 14.4).
+///
+/// UTF-8 boundary handling: `\n` is the ASCII byte `0x0A`, which never
+/// participates in a multi-byte UTF-8 sequence (continuation bytes are
+/// `0x80..=0xBF`, leading bytes `0xC0..=0xFD`). So the first `\n\n` we
+/// find in the byte buffer never lands inside a multi-byte character —
+/// the bytes before it are guaranteed to end on a code-point boundary,
+/// and `std::str::from_utf8` succeeds the moment a full record's bytes
+/// are present. Partial multi-byte sequences at the end of a chunk
+/// simply remain in the buffer until the next chunk completes them
+/// before the next separator.
+///
+/// `\n\n` inside JSON string values: the JSON serialization rules
+/// require control characters in strings to be escaped (`\n` is the
+/// two-byte sequence `\` + `n`, NOT raw `0x0A`). Compliant OpenAI
+/// servers therefore never produce raw `\n\n` inside a JSON string, so
+/// byte-splitting on `\n\n` cannot land mid-record for any well-formed
+/// stream. Pathological non-compliant servers that emit raw control
+/// characters inside JSON strings are treated as protocol violations:
+/// the resulting JSON parse failure abort with `InvalidResponse`,
+/// matching the Req 14.4 surface.
+pub mod sse_parser {
+    use serde::Deserialize;
+
+    /// Streaming SSE parser. Construct with `new()`, feed bytes with
+    /// `push()`, and consume the trailing partial record (if any) with
+    /// `finish()`.
+    pub struct SseParser {
+        /// Byte accumulator. Use `Vec<u8>` rather than `String` so a
+        /// chunk that lands mid-multi-byte-character can be deferred to
+        /// the next `push()` without invoking `String::from_utf8_lossy`
+        /// (which would silently drop invalid bytes — Req 14.4 wants a
+        /// hard parse failure on bad UTF-8).
+        buffer: Vec<u8>,
+        /// Set to `true` once `[DONE]` has been emitted. Subsequent
+        /// `push()` calls short-circuit so a misbehaving server cannot
+        /// inject tokens after the terminal sentinel.
+        done: bool,
+    }
+
+    /// Events surfaced by the parser. The streaming task converts each
+    /// `Token` into a `tauri://llm-token` emit and `Done` into a clean
+    /// `tauri://llm-complete` (no error) per Req 13.1 / 14.6.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum SseEvent {
+        /// A non-empty `delta.content` fragment ready for emission.
+        Token(String),
+        /// The `[DONE]` sentinel was received.
+        Done,
+    }
+
+    /// Parser-level error. Carries no payload because Req 14.4 pins the
+    /// surfaced reason to the literal string `"invalid response"`; the
+    /// streaming task maps this into `LlmError::InvalidResponse` whose
+    /// `Display` produces that exact string.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct InvalidResponse;
+
+    /// `data:` payload envelope. Only `choices[0].delta.content` is
+    /// consumed; `id`, `role`, `finish_reason`, and any other fields are
+    /// intentionally ignored to keep the parser lenient against minor
+    /// schema drift across OpenAI-compatible servers.
+    #[derive(Deserialize)]
+    struct ChunkEnvelope {
+        choices: Vec<ChunkChoice>,
+    }
+
+    #[derive(Deserialize)]
+    struct ChunkChoice {
+        /// `delta` is required by the OpenAI streaming schema. A missing
+        /// or null `delta` triggers a parse failure → `InvalidResponse`,
+        /// which is the design-mandated surface for malformed envelopes.
+        delta: ChunkDelta,
+    }
+
+    #[derive(Deserialize)]
+    struct ChunkDelta {
+        /// First chunk usually has `{"role":"assistant"}` and no
+        /// `content`; final chunk carries `finish_reason` with empty
+        /// delta. Both should be silently dropped without emitting a
+        /// `Token`. `content: ""` (present but empty) is also dropped.
+        content: Option<String>,
+    }
+
+    impl SseParser {
+        /// Construct a fresh parser with an empty buffer.
+        pub fn new() -> Self {
+            Self {
+                buffer: Vec::new(),
+                done: false,
+            }
+        }
+
+        /// Feed a chunk of bytes from `Response::bytes_stream()`.
+        ///
+        /// Returns the events extracted by completing one or more
+        /// records. Bytes that don't form a complete record are buffered
+        /// for the next call. After `[DONE]` has been observed, further
+        /// calls are no-ops and return an empty `Vec`.
+        ///
+        /// Errors:
+        ///   - `InvalidResponse` if a record contains invalid UTF-8.
+        ///   - `InvalidResponse` if a `data:` payload (other than
+        ///     `[DONE]`) does not parse as a `ChunkEnvelope`.
+        pub fn push(&mut self, chunk: &[u8]) -> Result<Vec<SseEvent>, InvalidResponse> {
+            if self.done {
+                return Ok(Vec::new());
+            }
+            self.buffer.extend_from_slice(chunk);
+
+            let mut events = Vec::new();
+            while let Some(idx) = find_double_newline(&self.buffer) {
+                // `\n` is ASCII (0x0A) and cannot appear inside a UTF-8
+                // continuation byte, so `buffer[..idx]` is guaranteed to
+                // end on a code-point boundary even when the chunk
+                // carrying the separator was preceded by a partial
+                // multi-byte character.
+                let record = std::str::from_utf8(&self.buffer[..idx])
+                    .map_err(|_| InvalidResponse)?
+                    .to_string();
+                self.buffer.drain(..idx + 2);
+
+                if let Some(event) = parse_record(&record)? {
+                    let is_done = matches!(event, SseEvent::Done);
+                    events.push(event);
+                    if is_done {
+                        // Drop any bytes after `[DONE]`; a compliant
+                        // server doesn't emit anything past it and a
+                        // misbehaving one shouldn't be able to inject
+                        // tokens through the parser.
+                        self.buffer.clear();
+                        self.done = true;
+                        break;
+                    }
+                }
+            }
+            Ok(events)
+        }
+
+        /// Force-flush any buffered bytes at end-of-stream. The remaining
+        /// bytes are treated as one final record. Returns events
+        /// extracted from that record, if any.
+        ///
+        /// The streaming task calls this only when the upstream byte
+        /// stream has cleanly ended without producing the expected
+        /// trailing `\n\n`; a partial record left in the buffer is more
+        /// likely a server quirk than a real event, but processing it
+        /// keeps the parser symmetric with `push()`.
+        pub fn finish(self) -> Result<Vec<SseEvent>, InvalidResponse> {
+            if self.done || self.buffer.is_empty() {
+                return Ok(Vec::new());
+            }
+            let record = std::str::from_utf8(&self.buffer).map_err(|_| InvalidResponse)?;
+            let mut events = Vec::new();
+            if let Some(event) = parse_record(record)? {
+                events.push(event);
+            }
+            Ok(events)
+        }
+    }
+
+    impl Default for SseParser {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// Find the byte offset of the first `\n\n` occurrence, or `None` if
+    /// the buffer doesn't contain one yet.
+    fn find_double_newline(buf: &[u8]) -> Option<usize> {
+        // `windows(2)` is allocation-free and runs in O(n).
+        buf.windows(2).position(|w| w == b"\n\n")
+    }
+
+    /// Parse a single SSE record (the bytes between consecutive `\n\n`
+    /// separators) into an optional `SseEvent`.
+    ///
+    /// Returns:
+    ///   - `Ok(None)` for empty records, comment-only records (lines
+    ///     starting with `:`), and records whose only `data:` payload is
+    ///     `delta.content == None || ""` (Req 14.6 says only non-empty
+    ///     fragments are emitted).
+    ///   - `Ok(Some(SseEvent::Done))` for the `[DONE]` sentinel.
+    ///   - `Ok(Some(SseEvent::Token(...)))` for a non-empty content
+    ///     fragment.
+    ///   - `Err(InvalidResponse)` for any payload that fails to parse as
+    ///     a `ChunkEnvelope`.
+    fn parse_record(record: &str) -> Result<Option<SseEvent>, InvalidResponse> {
+        // Trim whole-record whitespace so trailing `\r` from `\r\n\r\n`
+        // separators (which we don't split on, but which servers may
+        // emit) and stray surrounding spaces don't confuse the
+        // prefix-strip step.
+        let trimmed = record.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+
+        // SSE allows multiline records (`event:`, `id:`, `retry:`, plus
+        // multiple `data:` lines that get joined with `\n`). OpenAI only
+        // emits single-line `data: ...` records, so the simple prefix
+        // check covers every real-world case. Anything else is a comment
+        // (`:` lines) or out-of-band metadata we silently drop.
+        let payload = match trimmed.strip_prefix("data:") {
+            Some(rest) => rest.trim_start(),
+            None => return Ok(None),
+        };
+
+        if payload == "[DONE]" {
+            return Ok(Some(SseEvent::Done));
+        }
+
+        let env: ChunkEnvelope = serde_json::from_str(payload).map_err(|_| InvalidResponse)?;
+        let content = env
+            .choices
+            .into_iter()
+            .next()
+            .and_then(|c| c.delta.content)
+            .unwrap_or_default();
+        if content.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(SseEvent::Token(content)))
+        }
+    }
+
+    // ---- Tests -----------------------------------------------------------
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn one_event(content: &str) -> String {
+            format!(
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":{}}}}}]}}\n\n",
+                serde_json::to_string(content).unwrap()
+            )
+        }
+
+        /// Two well-formed records arriving in a single `push()` call
+        /// surface in order, in the same `Vec`.
+        #[test]
+        fn push_emits_multiple_events_from_one_chunk() {
+            let mut p = SseParser::new();
+            let payload = format!("{}{}", one_event("hello"), one_event(" world"));
+            let events = p.push(payload.as_bytes()).unwrap();
+            assert_eq!(
+                events,
+                vec![
+                    SseEvent::Token("hello".into()),
+                    SseEvent::Token(" world".into()),
+                ]
+            );
+        }
+
+        /// A single record split across two reads is reassembled across
+        /// `push()` boundaries: nothing emits on the first half, the
+        /// token emits when the trailing `\n\n` lands in the second.
+        #[test]
+        fn single_event_split_across_two_reads() {
+            let mut p = SseParser::new();
+            let full = one_event("ping");
+            let mid = full.len() / 2;
+            let first = p.push(full[..mid].as_bytes()).unwrap();
+            assert!(first.is_empty());
+            let second = p.push(full[mid..].as_bytes()).unwrap();
+            assert_eq!(second, vec![SseEvent::Token("ping".into())]);
+        }
+
+        /// One read carries 1.5 records, the next completes the second.
+        /// First read emits one event; second read emits the rest.
+        #[test]
+        fn multiple_events_split_across_two_reads() {
+            let mut p = SseParser::new();
+            let combined = format!("{}{}", one_event("alpha"), one_event("beta"));
+            let cut = combined.find("beta").unwrap();
+            let first = p.push(combined[..cut].as_bytes()).unwrap();
+            assert_eq!(first, vec![SseEvent::Token("alpha".into())]);
+            let second = p.push(combined[cut..].as_bytes()).unwrap();
+            assert_eq!(second, vec![SseEvent::Token("beta".into())]);
+        }
+
+        /// `[DONE]` produces `SseEvent::Done` and locks the parser:
+        /// further bytes are ignored.
+        #[test]
+        fn done_sentinel_terminates_stream() {
+            let mut p = SseParser::new();
+            let payload = format!("{}data: [DONE]\n\n", one_event("hi"));
+            let events = p.push(payload.as_bytes()).unwrap();
+            assert_eq!(
+                events,
+                vec![SseEvent::Token("hi".into()), SseEvent::Done]
+            );
+            // Anything after [DONE] is dropped on the floor.
+            let after = p.push(one_event("nope").as_bytes()).unwrap();
+            assert!(after.is_empty());
+        }
+
+        /// Leading and trailing whitespace inside a record is tolerated:
+        /// `data:` works with or without a space after the colon, and a
+        /// stray `\r` in front of `\n\n` (from `\r\n\r\n`-style framing)
+        /// doesn't break the parse.
+        #[test]
+        fn whitespace_in_records_is_tolerated() {
+            let mut p = SseParser::new();
+            let payload = "data:{\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\r\n\n\
+                           data:   {\"choices\":[{\"delta\":{\"content\":\"y\"}}]}\n\n";
+            let events = p.push(payload.as_bytes()).unwrap();
+            assert_eq!(
+                events,
+                vec![
+                    SseEvent::Token("x".into()),
+                    SseEvent::Token("y".into()),
+                ]
+            );
+        }
+
+        /// Malformed JSON in a `data:` payload aborts the stream with
+        /// `InvalidResponse`; this is the source of the Req 14.4
+        /// `"invalid response"` Status_Bar reason.
+        #[test]
+        fn malformed_json_returns_invalid_response() {
+            let mut p = SseParser::new();
+            let payload = "data: {not json}\n\n";
+            let err = p.push(payload.as_bytes()).unwrap_err();
+            assert_eq!(err, InvalidResponse);
+        }
+
+        /// A multi-byte character split across two chunks is reassembled
+        /// once the second chunk arrives. The character `é` is encoded
+        /// as `0xC3 0xA9`; if the first chunk ends on `0xC3`, the parser
+        /// must defer UTF-8 validation until the next chunk lands.
+        #[test]
+        fn partial_utf8_split_across_chunks_is_buffered() {
+            let mut p = SseParser::new();
+            let full = one_event("café");
+            let bytes = full.as_bytes();
+            // Find the byte index of the first 0xC3 (start of `é`) and
+            // split the stream right between `0xC3` and `0xA9`.
+            let cut = bytes.iter().position(|&b| b == 0xC3).unwrap() + 1;
+            assert_eq!(bytes[cut - 1], 0xC3);
+            assert_eq!(bytes[cut], 0xA9);
+
+            let first = p.push(&bytes[..cut]).unwrap();
+            assert!(first.is_empty(), "no events until char completes");
+            let second = p.push(&bytes[cut..]).unwrap();
+            assert_eq!(second, vec![SseEvent::Token("café".into())]);
+        }
+
+        /// Records that don't begin with `data:` (SSE comments, `event:`
+        /// lines from non-OpenAI servers, blank framing) are silently
+        /// dropped so they don't pollute the token stream.
+        #[test]
+        fn non_data_lines_are_ignored() {
+            let mut p = SseParser::new();
+            let payload = format!(
+                ": this is a heartbeat comment\n\n{}event: ping\n\n{}",
+                one_event("kept"),
+                one_event("also-kept"),
+            );
+            let events = p.push(payload.as_bytes()).unwrap();
+            assert_eq!(
+                events,
+                vec![
+                    SseEvent::Token("kept".into()),
+                    SseEvent::Token("also-kept".into()),
+                ]
+            );
+        }
+
+        /// A `delta` with no `content` (the typical first chunk that
+        /// only carries `{"role":"assistant"}`) is silently dropped, and
+        /// an explicit empty `content: ""` likewise produces no event.
+        #[test]
+        fn empty_or_missing_content_is_skipped() {
+            let mut p = SseParser::new();
+            let payload = "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n\
+                           data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n\
+                           data: {\"choices\":[{\"delta\":{\"content\":\"actual\"}}]}\n\n";
+            let events = p.push(payload.as_bytes()).unwrap();
+            assert_eq!(events, vec![SseEvent::Token("actual".into())]);
+        }
+
+        /// JSON-escaped newlines inside a string value are encoded over
+        /// the wire as the two-byte sequence `\n` (backslash + 'n'), not
+        /// as raw `0x0A`. Splitting on raw `\n\n` therefore can't land
+        /// inside the JSON string, and the record stays intact.
+        #[test]
+        fn newlines_inside_json_strings_dont_split_records() {
+            let mut p = SseParser::new();
+            // Build a JSON envelope whose `content` is `hello\n\nworld`.
+            // `serde_json::to_string` produces `"hello\\n\\nworld"`,
+            // i.e. `hello\n\nworld` over the wire — no raw `0x0A`.
+            let event = one_event("hello\n\nworld");
+            assert!(
+                !event[..event.len() - 2].contains("\n\n"),
+                "wire payload (excluding terminator) must not contain raw \\n\\n"
+            );
+            let events = p.push(event.as_bytes()).unwrap();
+            assert_eq!(
+                events,
+                vec![SseEvent::Token("hello\n\nworld".into())]
+            );
+        }
+
+        /// `finish()` flushes any trailing record that lacks a `\n\n`
+        /// terminator. This covers servers that close the stream without
+        /// the final blank line.
+        #[test]
+        fn finish_flushes_trailing_record_without_terminator() {
+            let mut p = SseParser::new();
+            // Push a record without the trailing `\n\n`.
+            let partial = "data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}";
+            let mid = p.push(partial.as_bytes()).unwrap();
+            assert!(mid.is_empty());
+            let tail = p.finish().unwrap();
+            assert_eq!(tail, vec![SseEvent::Token("tail".into())]);
+        }
+
+        /// `finish()` after `[DONE]` returns no events and ignores any
+        /// post-sentinel bytes the upstream might have buffered.
+        #[test]
+        fn finish_after_done_returns_empty() {
+            let mut p = SseParser::new();
+            let _ = p.push(b"data: [DONE]\n\n").unwrap();
+            assert_eq!(p.finish().unwrap(), Vec::<SseEvent>::new());
+        }
+
+        /// Invalid UTF-8 inside a record returns `InvalidResponse`. We
+        /// build a record whose pre-`\n\n` bytes contain an invalid
+        /// continuation byte (`0xC3` followed by `0x20`, which is not a
+        /// valid continuation) so `std::str::from_utf8` fails.
+        #[test]
+        fn invalid_utf8_record_returns_invalid_response() {
+            let mut p = SseParser::new();
+            let mut bytes = b"data: ".to_vec();
+            bytes.push(0xC3); // start of a 2-byte UTF-8 sequence...
+            bytes.push(0x20); // ...but `0x20` (space) is not a continuation byte.
+            bytes.extend_from_slice(b"\n\n");
+            let err = p.push(&bytes).unwrap_err();
+            assert_eq!(err, InvalidResponse);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// start_stream (Task 15, Req 13.1, 13.5, 13.7, 14.1, 14.2, 14.3, 14.4, 14.5,
+//                       14.6, 14.7, 15.4, 15.8)
+// -----------------------------------------------------------------------------
+
+use futures_util::StreamExt;
+use tauri::{AppHandle, Manager};
+use tokio::time::{sleep_until, Instant};
+use tokio_util::sync::CancellationToken;
+
+use crate::events::{emit_llm_complete, emit_llm_token};
+use crate::state::AppState;
+
+use self::sse_parser::{SseEvent, SseParser};
+
+/// Idle-timeout budget per Req 14.2: 60s of no incoming bytes before we
+/// abort the stream with `"stream timed out"`. Pinned as a constant so
+/// the value is documented next to the loop logic rather than buried in
+/// a magic literal.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Drive the streaming LLM pipeline to its terminal `tauri://llm-complete`
+/// emit and release the `StreamRegistry` slot.
+///
+/// Ownership: the future owns `text`, `settings`, and `cancel`, plus the
+/// `reqwest::Response` and `bytes_stream()` it constructs internally. The
+/// caller (`commands::stream_llm`) hands these in by value after acquiring
+/// the registry slot, then `tokio::spawn`s this function so the command
+/// itself returns within Req 15.4's 200ms budget.
+///
+/// Three priority-ordered terminal arms (Req 13.5, 13.7, 14.6, "Stream
+/// error semantics" in design.md):
+///
+///   1. Connect-phase failure or non-200 status — detected synchronously
+///      before entering the loop. `is_connect()`/`is_timeout()` →
+///      `"connection failed"` (Req 14.1); other send errors →
+///      `"connection lost"` (Req 14.5); non-200 status → `"HTTP {code}"`
+///      (Req 14.3).
+///
+///   2. In-loop `tokio::select!` over three arms:
+///      - `cancel.cancelled()` — clean completion, `error: None`
+///        (Req 13.7). Within 1s of the token firing the terminal emit
+///        lands; the surrounding race only exits the select arm, the
+///        emit happens immediately after `break`.
+///      - `sleep_until(last_byte_at + IDLE_TIMEOUT)` — `"stream timed
+///        out"` (Req 14.2). `last_byte_at` is reset on every successful
+///        chunk read, so a still-flowing stream cannot trip this arm.
+///      - `bytes_stream().next()` — feed bytes into the parser.
+///        - `Some(Ok(bytes))` → parse → emit each `Token`; on `Done`,
+///          break with clean completion.
+///        - `Some(Err(_))` → mid-stream connection drop → `"connection
+///          lost"` (Req 14.5).
+///        - `None` → EOF without `[DONE]` → `"connection lost"`
+///          (per the "Stream error semantics" arm 5).
+///        - parser → `InvalidResponse` → `"invalid response"` (Req 14.4).
+///
+///   3. Whatever the terminal arm: `emit_llm_complete(...)` fires once,
+///      then `StreamRegistry::release()` is called unconditionally so the
+///      next Send to Model is accepted (Req 14.6 trailing sentence).
+///
+/// `app.state::<AppState>()` is the canonical way to recover the managed
+/// state from inside a spawned task; the registry's `release()` is
+/// idempotent on a missing slot, so even a pathological cancellation race
+/// cannot deadlock or double-release.
+///
+/// Tokens emitted before a terminal failure are NOT rolled back (Req
+/// 14.7); the frontend keeps whatever was already spliced into the
+/// buffer, and the stream-`Edit_Group` is committed by the frontend on
+/// the terminal `tauri://llm-complete` arm (Req 13.9, 18.7–18.10).
+pub async fn start_stream(
+    app: AppHandle,
+    text: String,
+    settings: Settings,
+    cancel: CancellationToken,
+) {
+    // RAII guard so the registry slot is released even if `run_stream`
+    // panics. `tokio::spawn` catches the panic at the task boundary, but
+    // the panic still skips any post-await statement here — so a plain
+    // `app.state::<AppState>().stream.release()` after the await would
+    // leave the registry permanently occupied and block every future
+    // Send to Model. Stuffing the release into `Drop` makes it run on
+    // both the happy and the unwinding path.
+    let _guard = ReleaseOnDrop::new(app.clone());
+    run_stream(&app, text, settings, cancel).await;
+}
+
+/// RAII guard that releases the `StreamRegistry` slot when dropped.
+///
+/// Held by `start_stream` so the slot is freed on every exit path: clean
+/// completion, error, cancellation, or panic. `release()` itself is
+/// idempotent — clearing an already-empty slot is a no-op (`Mutex<Option>`
+/// → `*slot = None`) — so wrapping it in `Drop` is purely additive.
+struct ReleaseOnDrop {
+    app: AppHandle,
+}
+
+impl ReleaseOnDrop {
+    fn new(app: AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+impl Drop for ReleaseOnDrop {
+    fn drop(&mut self) {
+        self.app.state::<AppState>().stream.release();
+    }
+}
+
+/// Inner driver that emits exactly one `tauri://llm-complete` and
+/// returns. Split out from `start_stream` so the unconditional
+/// `release()` in the wrapper cannot be skipped by an early `return`.
+async fn run_stream(
+    app: &AppHandle,
+    text: String,
+    settings: Settings,
+    cancel: CancellationToken,
+) {
+    // 1. Build the request body with `stream: true` and POST it. Failures
+    //    here are connect-phase errors (DNS/connect/TLS/handshake) or the
+    //    5s connect_timeout; both surface as the design's
+    //    `"connection failed"` reason (Req 14.1) when `is_connect()` or
+    //    `is_timeout()` matches. Anything else at this stage is a dropped
+    //    connection mid-handshake or mid-write — Req 14.5's
+    //    `"connection lost"`.
+    let body = build_body(&text, &settings, true);
+    let response = match http_client()
+        .post(&settings.api_url)
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(err) => {
+            let reason = if err.is_connect() || err.is_timeout() {
+                LlmError::ConnectionFailed.to_string()
+            } else {
+                LlmError::ConnectionLost.to_string()
+            };
+            let _ = emit_llm_complete(app, Some(reason));
+            return;
+        }
+    };
+
+    // 2. HTTP-level status check. Non-200 surfaces as `"HTTP {code}"`
+    //    verbatim (Req 14.3). Detected synchronously before entering the
+    //    loop so the `Status_Bar` reason carries the decimal status from
+    //    the very first emit, with no token events in between.
+    let status = response.status();
+    if !status.is_success() {
+        let reason = LlmError::HttpStatus(status.as_u16()).to_string();
+        let _ = emit_llm_complete(app, Some(reason));
+        return;
+    }
+
+    // 3. Drain the body as an SSE stream. `bytes_stream()` yields
+    //    `Result<Bytes, reqwest::Error>` chunks. Pin it on the stack so
+    //    `tokio::select!` can poll it across arm visits.
+    let mut stream = response.bytes_stream();
+    let mut parser = SseParser::new();
+    let mut last_byte_at = Instant::now();
+
+    // Terminal reason. `None` is the clean-completion sentinel (cancel
+    // or `[DONE]`); `Some(reason)` carries any error-arm reason. The
+    // `loop`/`break` shape lets every arm pick its reason in one place
+    // and emit-and-release outside the loop.
+    let reason: Option<String> = loop {
+        tokio::select! {
+            // Bias toward cancel first: on a near-simultaneous cancel +
+            // chunk arrival, prefer the cancel so the user-visible
+            // outcome matches the action the user just took. `select!`'s
+            // default is random; `biased` makes the priority explicit.
+            biased;
+
+            // Arm 1: cooperative cancellation (Req 13.7).
+            //
+            // The `Status_Bar` ends a cancelled stream silently — no
+            // error reason is rendered (Req 14.6 only fires for failure
+            // arms). The token has already been observed by the streaming
+            // task at this point; dropping `stream`/`response` on `break`
+            // closes the connection underneath us.
+            _ = cancel.cancelled() => {
+                break None;
+            }
+
+            // Arm 2: idle timeout (Req 14.2).
+            //
+            // `sleep_until` is recreated each iteration with the latest
+            // `last_byte_at`; on a fast-flowing stream the deadline
+            // advances faster than the timer fires, so this arm never
+            // wins. On a stalled stream (server hung, network silent)
+            // the 60s budget elapses and we abort with `"stream timed
+            // out"`.
+            _ = sleep_until(last_byte_at + IDLE_TIMEOUT) => {
+                break Some(LlmError::StreamTimedOut.to_string());
+            }
+
+            // Arm 3: next chunk from the body stream.
+            //
+            // `next()` resolves to:
+            //   - `None`            — EOF without `[DONE]`, treat as a
+            //                         dropped connection (Req 14.5,
+            //                         "Stream error semantics" arm 5).
+            //   - `Some(Err(_))`    — mid-stream connection drop
+            //                         (Req 14.5, arm 4).
+            //   - `Some(Ok(bytes))` — feed the parser; emit each token,
+            //                         break cleanly on `Done`, abort
+            //                         with `"invalid response"` on a
+            //                         parse failure (Req 14.4).
+            chunk = stream.next() => {
+                match chunk {
+                    None => {
+                        break Some(LlmError::ConnectionLost.to_string());
+                    }
+                    Some(Err(_e)) => {
+                        break Some(LlmError::ConnectionLost.to_string());
+                    }
+                    Some(Ok(bytes)) => {
+                        // Reset the idle-timeout deadline against the
+                        // current monotonic clock; the next `select!`
+                        // iteration recreates `sleep_until` with this
+                        // fresh value.
+                        last_byte_at = Instant::now();
+
+                        let events = match parser.push(&bytes) {
+                            Ok(evs) => evs,
+                            Err(_) => {
+                                break Some(LlmError::InvalidResponse.to_string());
+                            }
+                        };
+
+                        let mut hit_done = false;
+                        for ev in events {
+                            match ev {
+                                SseEvent::Token(fragment) => {
+                                    // A failed `emit_llm_token` is a
+                                    // WebView-dispatch hiccup, not a
+                                    // protocol error. Log the underlying
+                                    // `tauri::Error` and keep streaming
+                                    // — dropping the connection over a
+                                    // transient IPC failure would lose
+                                    // the rest of the response and
+                                    // surface `"connection lost"` even
+                                    // though the upstream was healthy.
+                                    if let Err(e) = emit_llm_token(app, &fragment) {
+                                        log::warn!(
+                                            "failed to emit tauri://llm-token: {e}"
+                                        );
+                                    }
+                                }
+                                SseEvent::Done => {
+                                    hit_done = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if hit_done {
+                            break None;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // Single terminal emit (Req 13.5). Release happens in the outer
+    // `start_stream` wrapper via `ReleaseOnDrop`, which fires on both the
+    // happy and the unwinding path so a panic mid-stream still clears
+    // the registry slot and lets the user retry.
+    if let Err(e) = emit_llm_complete(app, reason) {
+        log::warn!("failed to emit tauri://llm-complete: {e}");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::{ReplaceMode, Settings};
+    use serde_json::json;
+
+    fn settings_with_prompt(system_prompt: &str) -> Settings {
+        Settings {
+            api_url: "http://localhost:1234/v1/chat/completions".into(),
+            model: "local-model".into(),
+            temperature: 0.4,
+            max_tokens: 256,
+            replace_mode: ReplaceMode::ReplaceDocument,
+            system_prompt: system_prompt.into(),
+        }
+    }
+
+    // ---- build_body -------------------------------------------------------
+
+    /// Empty `system_prompt` → no system message; `messages` contains only
+    /// the user message (Req 12.1, 12.5 negative side).
+    #[test]
+    fn build_body_omits_system_message_when_prompt_empty() {
+        let s = settings_with_prompt("");
+        let body = build_body("hello", &s, false);
+
+        let messages = body.get("messages").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"], "hello");
+    }
+
+    /// Non-empty `system_prompt` → system message prepended, user message
+    /// last (Req 12.1, 12.5).
+    #[test]
+    fn build_body_prepends_system_message_when_prompt_non_empty() {
+        let s = settings_with_prompt("you are a helpful assistant");
+        let body = build_body("ping", &s, true);
+
+        let messages = body.get("messages").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[0]["content"], "you are a helpful assistant");
+        assert_eq!(messages[1]["role"], "user");
+        assert_eq!(messages[1]["content"], "ping");
+    }
+
+    /// Every settings-driven field in the body is preserved exactly
+    /// (Req 12.4).
+    #[test]
+    fn build_body_preserves_model_temperature_max_tokens_and_stream() {
+        let mut s = settings_with_prompt("");
+        s.model = "test-model".into();
+        s.temperature = 1.5;
+        s.max_tokens = 7777;
+
+        let body_stream_true = build_body("anything", &s, true);
+        assert_eq!(body_stream_true["model"], "test-model");
+        assert!((body_stream_true["temperature"].as_f64().unwrap() - 1.5).abs() < f64::EPSILON);
+        assert_eq!(body_stream_true["max_tokens"], 7777);
+        assert_eq!(body_stream_true["stream"], true);
+
+        let body_stream_false = build_body("anything", &s, false);
+        assert_eq!(body_stream_false["stream"], false);
+    }
+
+    /// User-message content equals the supplied `text` verbatim regardless
+    /// of code-point complexity. Mirrors the Req 12.2 "exact" wording.
+    #[test]
+    fn build_body_user_message_content_equals_text_verbatim() {
+        let s = settings_with_prompt("");
+        let text = "héllo 𝕏\nworld";
+        let body = build_body(text, &s, false);
+        let messages = body.get("messages").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(messages.last().unwrap()["content"], text);
+    }
+
+    /// Top-level body keys match the design exactly: `model`, `messages`,
+    /// `temperature`, `max_tokens`, `stream`. No extra keys, no missing
+    /// keys.
+    #[test]
+    fn build_body_has_exact_top_level_key_set() {
+        let s = settings_with_prompt("sys");
+        let body = build_body("user", &s, false);
+        let obj = body.as_object().expect("body is an object");
+        let mut keys: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec!["max_tokens", "messages", "model", "stream", "temperature"]
+        );
+    }
+
+    // ---- extract_first_choice_content ------------------------------------
+
+    #[test]
+    fn extract_returns_content_for_well_formed_envelope() {
+        let env = json!({
+            "choices": [
+                { "message": { "role": "assistant", "content": "hi there" } }
+            ]
+        });
+        assert_eq!(
+            extract_first_choice_content(&env).as_deref(),
+            Some("hi there")
+        );
+    }
+
+    #[test]
+    fn extract_returns_none_when_choices_missing() {
+        let env = json!({});
+        assert!(extract_first_choice_content(&env).is_none());
+    }
+
+    #[test]
+    fn extract_returns_none_when_choices_empty() {
+        let env = json!({ "choices": [] });
+        assert!(extract_first_choice_content(&env).is_none());
+    }
+
+    #[test]
+    fn extract_returns_none_when_message_or_content_missing() {
+        let env = json!({ "choices": [ { "message": {} } ] });
+        assert!(extract_first_choice_content(&env).is_none());
+
+        let env = json!({ "choices": [ {} ] });
+        assert!(extract_first_choice_content(&env).is_none());
+    }
+
+    #[test]
+    fn extract_returns_none_when_content_is_not_a_string() {
+        let env = json!({
+            "choices": [ { "message": { "content": 42 } } ]
+        });
+        assert!(extract_first_choice_content(&env).is_none());
+    }
+
+    // ---- http_client ------------------------------------------------------
+
+    /// `http_client()` is process-wide and returns the same pointer on
+    /// repeat calls — the connection pool depends on this.
+    #[test]
+    fn http_client_returns_same_instance_on_repeat_calls() {
+        let a = http_client() as *const _;
+        let b = http_client() as *const _;
+        assert_eq!(a, b);
+    }
+}

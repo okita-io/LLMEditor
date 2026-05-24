@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 okita.io
+
+[package]
+name = "llimedit"
+description = "LLIMEdit: a minimal cross-platform plain-text editor with LM Studio integration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "llimedit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.4" }
+
+[dependencies]
+# Tauri 2.x runtime; default features kept so the dialog plugin can hook in.
+tauri = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+
+# Serialization.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP / SSE streaming. rustls-tls keeps us off OpenSSL; json + stream are
+# needed for the call_llm and stream_llm pipelines.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+
+# OS-standard config directory lookup (Settings_Service).
+dirs = "5"
+
+# Async primitives. tokio-util pulls in CancellationToken used by the
+# StreamRegistry; tokio supplies the runtime features the streaming task uses.
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "fs"] }
+futures-util = "0.3"
+
+# Logging facade (kept from the bootstrap; the log plugin uses it).
+log = "0.4"
+
+[dev-dependencies]
+proptest = "1"
+httpmock = "0.7"
+tempfile = "3"

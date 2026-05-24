@@ -1,0 +1,43 @@
+<!--
+  SPDX-License-Identifier: MIT
+  Copyright (c) 2026 okita.io
+
+  LLIMEdit — single-window editor shell.
+  Layout (top to bottom): menu bar, editor textarea, status bar.
+  No tabs, no syntax highlighting, no theming (Req 17.1, 17.2, 17.3, 17.6, 17.7).
+
+  Frontend ES modules are loaded in the order pinned by Task 17:
+    api.js → editor.js → status_bar.js → settings_modal.js → menu.js → main.js
+  Each is declared as a separate `<script type="module">` so the browser
+  evaluates them in document order. ES modules are cached per URL, so
+  the imports inside main.js resolve to the same evaluated instances.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLIMEdit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <nav id="menu-bar" aria-label="Application menu"></nav>
+    <textarea
+      id="buffer"
+      spellcheck="false"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      wrap="soft"
+      autofocus
+    ></textarea>
+    <footer id="status-bar" role="status" aria-live="polite"></footer>
+
+    <script type="module" src="api.js"></script>
+    <script type="module" src="editor.js"></script>
+    <script type="module" src="status_bar.js"></script>
+    <script type="module" src="settings_modal.js"></script>
+    <script type="module" src="menu.js"></script>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

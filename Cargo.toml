@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 okita.io
+#
+# LLIMEdit workspace manifest.
+#
+# The workspace exists so that `Cargo.lock` lives at the repository root
+# (the file is committed) while the actual Tauri crate continues to live
+# under `src-tauri/` per Tauri 2.x conventions.
+
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+license = "MIT"
+authors = ["okita.io"]
+repository = ""
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

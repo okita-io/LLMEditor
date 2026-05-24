@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 okita.io
+#
+# LLIMEdit — repository ignore rules.
+# Note: Cargo.lock is intentionally NOT listed; it is committed.
+
+# Rust / Cargo build outputs
+target/
+src-tauri/target/
+
+# Tauri-generated assets
+src-tauri/gen/schemas/
+
+# Frontend build outputs (no bundler in v0.1, but keep these guarded)
+dist/
+node_modules/
+
+# OS / editor scratch
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Rust analyzer / coverage scratch
+*.profraw

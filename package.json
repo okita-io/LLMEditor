@@ -1,0 +1,17 @@
+{
+  "name": "llimedit",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "LLIMEdit frontend test harness (Vitest + fast-check + jsdom).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "@vitest/ui": "^2.1.9",
+    "fast-check": "^3.23.2",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}

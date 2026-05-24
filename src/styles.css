@@ -1,0 +1,224 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 okita.io
+ *
+ * LLIMEdit — uniform plain-text style. No syntax colorization, no
+ * themes, no font controls (Req 17.2, 17.3, 17.6, 17.7). One
+ * stylesheet, kept intentionally flat.
+ *
+ * Layout: full-window flex column with a fixed menu bar at the top, the
+ * <textarea> consuming the remaining vertical space, and a fixed status
+ * bar at the bottom (Req 1.1, 17.1). Monospace text in the buffer so a
+ * fixed-width column shows up the way the user expects in a plain-text
+ * editor.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #ffffff;
+  color: #111111;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ----------------------------------------------------------------------
+ * Menu bar (Req 2). Static markup at this point; Task 22 lands the
+ * dropdown reveal and keyboard navigation. The current rendering shows
+ * top-level menus inline with their items as a small list to the right.
+ * That keeps the bar visible during bootstrap so the disabled-state
+ * styling can be inspected at launch.
+ * -------------------------------------------------------------------- */
+
+#menu-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+  height: 28px;
+  border-bottom: 1px solid #d0d0d0;
+  background: #f4f4f4;
+  font-size: 13px;
+  user-select: none;
+}
+
+.menu {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-label {
+  font-weight: 600;
+}
+
+.menu-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.menu-item {
+  cursor: default;
+}
+
+/* AI menu disabled state (Req 1.3, 2.6, 1.6). The data-disabled
+ * attribute is toggled by `menu.js` as the bootstrap progresses; the
+ * styling here only dims the text and prevents pointer activation so
+ * the visual cue matches the gating Task 22 will enforce in JS. */
+[data-disabled="true"] {
+  color: #aaaaaa;
+  pointer-events: none;
+}
+
+/* ----------------------------------------------------------------------
+ * Buffer (Req 8, Req 17). A single <textarea> with monospace text, no
+ * theming hooks, soft wrap. The host browser handles caret rendering,
+ * IME composition, and clipboard semantics, which is exactly what
+ * Req 8.1, 8.3, 8.4, 8.5 want for v0.1.
+ * -------------------------------------------------------------------- */
+
+#buffer {
+  flex: 1 1 auto;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: #ffffff;
+  color: #111111;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+/* ----------------------------------------------------------------------
+ * Status bar (Req 9). Single line, ellipsis on overflow so a long file
+ * path does not push the model name off the right side.
+ * -------------------------------------------------------------------- */
+
+#status-bar {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid #d0d0d0;
+  background: #f4f4f4;
+  font-size: 12px;
+  color: #333333;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ----------------------------------------------------------------------
+ * Settings_Modal (Req 11). Built lazily by `settings_modal.js` and
+ * appended to <body>. The `.modal[hidden]` rule below is the source of
+ * truth for visibility — `settings_modal.js` toggles `.hidden` on the
+ * root element and never touches inline display.
+ * -------------------------------------------------------------------- */
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 4px;
+  min-width: 480px;
+  max-width: 90vw;
+  color: #111111;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.modal-content h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.modal-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-content label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.modal-content input,
+.modal-content select,
+.modal-content textarea {
+  padding: 4px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.modal-content textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.field-error {
+  color: #c00000;
+  font-size: 11px;
+  min-height: 13px;
+}
+
+.modal-error {
+  color: #c00000;
+  flex: 1;
+  font-size: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.modal-footer button {
+  padding: 4px 12px;
+}

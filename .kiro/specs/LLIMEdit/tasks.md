@@ -12,7 +12,7 @@ Pinned stack:
 
 ## Tasks
 
-- [ ] 1. Bootstrap Tauri 2.x project skeleton
+- [x] 1. Bootstrap Tauri 2.x project skeleton
   - Run `cargo init --name llimedit` at the repo root and add a `src-tauri/` Tauri 2.x project (`cargo install create-tauri-app` then `cargo tauri init` with vanilla template, or hand-author the structure).
   - Create top-level `src/` with `index.html` (single window: `<nav>` menu, `<textarea id="buffer">`, `<footer id="status-bar">`), `styles.css` (uniform plain-text style, no theming), and an empty `main.js` ES module wired via `<script type="module" src="main.js">`.
   - Configure `src-tauri/tauri.conf.json` for window title `"LLIMEdit"`, min size 800×600, distDir `../src`, devPath `../src`.
@@ -20,19 +20,19 @@ Pinned stack:
   - Add `.gitignore` covering `target/`, `dist/`, `node_modules/`, `src-tauri/target/`, `Cargo.lock` kept committed.
   - _Requirements: 1.1, 1.4, 1.5, 17.1, 17.2, 17.3_
 
-- [ ] 2. Pin Rust dependencies and dev-dependencies in `src-tauri/Cargo.toml`
+- [x] 2. Pin Rust dependencies and dev-dependencies in `src-tauri/Cargo.toml`
   - Add runtime deps: `tauri = "2"` (with the `default` feature set required for the dialog plugin), `tauri-plugin-dialog = "2"`, `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }`, `dirs = "5"`, `tokio-util = { version = "0.7", features = ["rt"] }`, `tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "fs"] }`, `futures-util = "0.3"`.
   - Add dev-deps: `proptest = "1"`, `httpmock = "0.7"`, `tempfile = "3"`.
   - Verify nothing depends on the `url` crate; the design uses a tiny scheme-prefix check instead.
   - _Requirements: 1.4_
 
-- [ ] 3. Set up Vitest + fast-check + jsdom for the frontend
+- [x] 3. Set up Vitest + fast-check + jsdom for the frontend
   - Add `package.json` with devDeps `vitest`, `@vitest/ui` (optional), `fast-check`, `jsdom`, and a `test` script `vitest --run`.
   - Add `vitest.config.js` selecting the `jsdom` environment and including `src/__tests__/**/*.test.js`.
   - Create `src/__tests__/.gitkeep` and a sanity test `src/__tests__/sanity.test.js` asserting `1 + 1 === 2` so `npm test` passes on a clean checkout.
   - _Requirements: 1.4_
 
-- [ ] 4. Define `Settings` struct, `ReplaceMode` enum, defaults, and validation in `settings.rs`
+- [x] 4. Define `Settings` struct, `ReplaceMode` enum, defaults, and validation in `settings.rs`
   - Implement `Settings { api_url, model, temperature, max_tokens, replace_mode, system_prompt }` with `Serialize`, `Deserialize`, `PartialEq`, `Debug`, `Clone`.
   - Implement `ReplaceMode` enum with `serde(rename_all = "snake_case")` covering `InsertAtCursor`, `ReplaceSelection`, `ReplaceDocument`.
   - Implement `Settings::default()` per Req 10.4.
@@ -40,23 +40,23 @@ Pinned stack:
   - Add a tiny pure-Rust `is_http_or_https_url(&str) -> bool` helper that avoids the `url` crate.
   - _Requirements: 10.2, 10.3, 10.4_
 
-- [ ]* 4.1 Property test P1: Settings serialize-then-parse round-trip
+- [x] 4.1 Property test P1: Settings serialize-then-parse round-trip
   - **Property 1: Settings round-trip** in `src-tauri/src/settings.rs` `#[cfg(test)] mod prop_tests` using `proptest`.
   - Build `arb_settings()` per design composing `arb_api_url`, `arb_model`, `arb_temperature`, `arb_max_tokens`, `arb_replace_mode`, `arb_system_prompt`.
   - Assert `from_str(to_string(s)) == s` for every generated `s`.
   - **Validates: Requirements 10.8**
 
-- [ ]* 4.2 Property test P2: per-field validator bounds
+- [x] 4.2 Property test P2: per-field validator bounds
   - **Property 2: validator matches its bounds** in the same `prop_tests` module.
   - Use `prop_oneof!` mixes (in-bounds + out-of-bounds) for each field per design; assert `Settings::validate_field(f, v).is_ok()` iff `v` lies inside the documented bound.
   - **Validates: Requirements 10.2, 10.3**
 
-- [ ] 5. Implement `error.rs` with `CommandError`, `FileError`, `SettingsError`, `LlmError`
+- [x] 5. Implement `error.rs` with `CommandError`, `FileError`, `SettingsError`, `LlmError`
   - Define one error enum per layer with `thiserror`-style `Display` (or hand-written) producing the exact messages in the design's Backend error catalog (e.g., `"path is empty"`, `"path is not absolute"`, `"path contains null byte"`, `"file is not valid UTF-8"`, `"could not read file: {os_error}"`, `"could not save file: {os_error}"`, `"connection failed"`, `"stream timed out"`, `"connection lost"`, `"invalid response"`).
   - Each error type must convert into the `String` returned by Tauri commands via `impl From<X> for String`.
   - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 15.1, 15.2, 15.7_
 
-- [ ] 6. Implement `validate_path` helper in `commands.rs`
+- [x] 6. Implement `validate_path` helper in `commands.rs`
   - `fn validate_path(p: &str) -> Result<PathBuf, String>` rejects empty, contains-null-byte, and non-absolute paths with the exact messages in the design.
   - _Requirements: 15.7_
 
@@ -65,14 +65,14 @@ Pinned stack:
   - Generate the union of (absolute paths via `"/[a-zA-Z0-9_/.-]{1,80}"` and `"[A-Z]:\\\\[a-zA-Z0-9_\\\\.-]{1,80}"`), relative paths, empty string, and any of the above with `\0` spliced in. Assert the `is_err` predicate matches the design's `if-and-only-if` clause.
   - **Validates: Requirements 15.7**
 
-- [ ] 7. Implement `file_service.rs` read pipeline (`LoadedFile`, `LineEnding`, `read_file`)
+- [x] 7. Implement `file_service.rs` read pipeline (`LoadedFile`, `LineEnding`, `read_file`)
   - Read file as `Vec<u8>`; strip leading `EF BB BF` BOM if present and record `had_bom`.
   - Decode remaining bytes as UTF-8 (`std::str::from_utf8`) and on failure return `FileError::Encoding`.
   - Scan for first occurrence of `\r\n`, `\n`, or `\r` and record as `LineEnding`; otherwise `LineEnding::None`.
   - Return `LoadedFile { contents, had_bom, line_ending }`.
   - _Requirements: 4.5, 4.6, 4.7, 4.8, 4.9_
 
-- [ ] 8. Implement `file_service.rs` write pipeline (`write_file`, atomic rename)
+- [x] 8. Implement `file_service.rs` write pipeline (`write_file`, atomic rename)
   - Normalize line endings: replace every `\n` and lone `\r` in the input with the recorded `line_ending`. If `LineEnding::None`, use `\n` on macOS and `\r\n` on Windows via `cfg!(target_os = ...)`.
   - Encode as UTF-8 bytes, prepend `EF BB BF` if `had_bom`.
   - Write to a sibling temp file (`path.with_extension("tmp.<pid>.<rand>")`), `flush`, `sync_data`, then `std::fs::rename` over `path`.
@@ -95,7 +95,7 @@ Pinned stack:
   - Failure-injection: simulate a `rename` failure (read-only target dir via `tempfile`); assert original file content is unchanged and no `*.tmp.*` sibling is left behind.
   - _Requirements: 4.5, 4.6, 4.7, 5.5, 6.6_
 
-- [ ] 9. Implement `settings_service.rs` paths, `LoadOutcome`, and `load`
+- [x] 9. Implement `settings_service.rs` paths, `LoadOutcome`, and `load`
   - `config_dir()` returns `dirs::config_dir().join("LLIMEdit")` and `settings_path()` joins `settings.json`.
   - `load() -> LoadOutcome` implements the four-step branch from the design: directory create, file create with defaults (`DefaultsCreated`), parse failure (`DefaultsFromError`, on-disk file untouched per Req 10.5), and field-by-field overlay onto `Settings::default()` filling absent fields and treating any present-but-invalid field as a whole-document failure.
   - `save(&Settings)` writes via the same atomic temp+fsync+rename pattern as `file_service::write_file`.
@@ -111,13 +111,13 @@ Pinned stack:
   - Save: happy path, atomic-rename verification, non-writable directory failure surfaces an error containing `"settings could not be saved"`.
   - _Requirements: 10.4, 10.5, 10.6, 10.7_
 
-- [ ] 10. Implement `state.rs`: `AppState`, `BufferMeta`, `StreamRegistry`, `StreamHandle`
+- [x] 10. Implement `state.rs`: `AppState`, `BufferMeta`, `StreamRegistry`, `StreamHandle`
   - `AppState { settings: RwLock<Settings>, buffer_meta: Mutex<HashMap<PathBuf, BufferMeta>>, stream: StreamRegistry }`.
   - `StreamRegistry(Mutex<Option<StreamHandle>>)` with `try_acquire() -> Result<CancellationToken, AlreadyActive>`, `release()`, and `cancel()`. `StreamHandle { cancel: CancellationToken }`.
   - `try_acquire` enforces single-flight (Req 13.8, 15.8).
   - _Requirements: 13.8, 15.8_
 
-- [ ] 11. Wire Tauri commands `open_file`, `save_file`, `load_settings`, `save_settings` in `commands.rs` and `main.rs`
+- [x] 11. Wire Tauri commands `open_file`, `save_file`, `load_settings`, `save_settings` in `commands.rs` and `main.rs`
   - Implement each `#[tauri::command]` thin wrapper exactly as defined in design.md (signatures, return types, error mapping to `String`).
   - `open_file` calls `validate_path` then `file_service::read_file`; on success cache the resulting `BufferMeta` in `AppState.buffer_meta` keyed by path and return only the decoded `String`.
   - `save_file` looks up `BufferMeta` for the path (falling back to per-Req-6.5 OS defaults if absent) and writes via `file_service::write_file`. On Save As, the `BufferMeta` for the active buffer is migrated to the new path key.
@@ -126,12 +126,12 @@ Pinned stack:
   - Register the four commands plus the `tauri-plugin-dialog` plugin in `main.rs`.
   - _Requirements: 15.1, 15.2, 15.5, 15.6, 15.7, 4.4, 4.8, 4.9, 5.5, 6.4, 6.5, 6.6, 9.5_
 
-- [ ] 12. Implement bootstrap `setup` for settings warm-up and the `tauri://file-opened` event emit path
+- [x] 12. Implement bootstrap `setup` for settings warm-up and the `tauri://file-opened` event emit path
   - In `tauri::Builder::setup`, spawn a Tokio task that calls `Settings_Service::load()` and writes the resulting `Settings` into `AppState`. While the task is in flight, `AppState.settings_ready` is `false`; after it resolves (success or `DefaultsFromError`), set it to `true` so the frontend can enable AI menu items (Req 1.3, 1.6, 2.6).
   - Add an `emit_file_opened(app: &AppHandle, contents: &str)` helper used by the future `open_file` flow to push `tauri://file-opened` to the frontend (Req 16.2).
   - _Requirements: 1.2, 1.3, 1.6, 2.6, 16.2_
 
-- [ ] 13. Implement non-streaming `LLM_Client::call_blocking` and `build_body` in `llm_client.rs`
+- [x] 13. Implement non-streaming `LLM_Client::call_blocking` and `build_body` in `llm_client.rs`
   - Build the `reqwest::Client` once with `connect_timeout(5s)`, `pool_idle_timeout(None)`, `tcp_nodelay(true)`, and `redirect::Policy::limited(3)`.
   - `build_body(text, &Settings, stream: bool) -> serde_json::Value` exactly matches the design: optional system message prepended only when `system_prompt` is non-empty, user message last, plus `model`, `temperature`, `max_tokens`, `stream`.
   - `call_blocking(text, &Settings) -> Result<String, LlmError>` posts with `stream: false`, awaits JSON, and returns `choices[0].message.content`. Map non-200, parse failures, connect timeouts, and connection drops into the same `LlmError` variants used by the streaming path.
@@ -143,7 +143,7 @@ Pinned stack:
   - Generator per design: `arb_settings()` (with `system_prompt` weighted to sample empty and non-empty), `text: ".*"` 0..4096 chars, `stream: bool`. Assert every field-level invariant from the property statement.
   - **Validates: Requirements 12.1, 12.2, 12.4, 12.5**
 
-- [ ] 14. Implement SSE parser in `llm_client::sse_parser`
+- [x] 14. Implement SSE parser in `llm_client::sse_parser`
   - Buffer incoming bytes into a `String` accumulator and split on `\n\n` to extract one event per record.
   - For each record strip the leading `data: ` prefix; on `[DONE]` signal clean stream completion; otherwise parse with `serde_json::from_str::<ChunkEnvelope>` and pull `choices[0].delta.content`.
   - Emit only non-empty `content` fragments. Any deserialization failure must abort with the literal error reason `"invalid response"`.
@@ -154,7 +154,7 @@ Pinned stack:
   - Well-formed chunks; multiple events in one read; single events split across two reads; leading/trailing whitespace; the `[DONE]` terminator; malformed JSON producing `"invalid response"`; partial UTF-8 split across chunks; chunks containing `\n\n` inside a JSON string value (must remain a single event).
   - _Requirements: 13.1, 14.4_
 
-- [ ] 15. Implement streaming command `stream_llm` and the cooperative cancel pathway
+- [x] 15. Implement streaming command `stream_llm` and the cooperative cancel pathway
   - Spawn one `tokio::spawn` future owning the `reqwest::Response` and a `CancellationToken`. Use `StreamRegistry::try_acquire()` to enforce single-flight; on `AlreadyActive` return `Err("a stream is already active")`.
   - In the streaming loop, race three arms with `tokio::select!`: `cancel.cancelled()` (no-error completion), idle-timer `last_byte_at + 60s` (`"stream timed out"`), and the next chunk from `Response::bytes_stream()` (parse → emit `tauri://llm-token <fragment>`).
   - On stream end, emit `tauri://llm-complete` with no error within 1 second of receiving `[DONE]` or after the cancel token fires. On non-200 status detected before entering the loop, emit `tauri://llm-complete` with an error reason that contains the decimal status (e.g., `"HTTP 503"`). On EOF without `[DONE]` or any other unmatched stream error, emit `"connection lost"`. Always call `StreamRegistry::release()` after the terminal emit.
@@ -168,17 +168,17 @@ Pinned stack:
   - For each scenario, assert `tauri://llm-token` event sequence and the exact terminal `tauri://llm-complete` payload.
   - _Requirements: 13.1, 13.5, 13.7, 13.8, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 15.4, 15.8_
 
-- [ ] 16. Checkpoint - Backend module verification
+- [x] 16. Checkpoint - Backend module verification
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 17. Build frontend skeleton: `index.html`, `styles.css`, `main.js`, `api.js`
+- [x] 17. Build frontend skeleton: `index.html`, `styles.css`, `main.js`, `api.js`
   - `index.html`: single window with `<nav id="menu-bar">` (top), `<textarea id="buffer" autofocus></textarea>` (middle), `<footer id="status-bar"></footer>` (bottom). Module scripts loaded in order: `api.js`, `editor.js`, `status_bar.js`, `settings_modal.js`, `menu.js`, `main.js`.
   - `styles.css`: full-window layout (flex column), uniform monospace text style for the textarea, plain text only (no syntax styling, no theme controls per Req 17.2, 17.3, 17.6, 17.7).
   - `api.js`: thin wrappers exporting `openFile(path)`, `saveFile(path, contents)`, `callLlm(text, settings)`, `streamLlm(text, settings)`, `cancelStream()`, `loadSettings()`, `saveSettings(settings)` that each `await` the matching `__TAURI__.core.invoke` call.
   - `main.js`: bootstrap glue — on `DOMContentLoaded`, call `editor.initialize()`, register `tauri://file-opened` / `tauri://llm-token` / `tauri://llm-complete` listeners, build the menu bar, render the initial status bar, and call `loadSettings()`. While that promise is pending, AI menu items are rendered disabled; on resolution they enable.
   - _Requirements: 1.1, 1.2, 1.3, 1.6, 16.1, 16.2, 17.1, 17.2, 17.3, 17.6, 17.7_
 
-- [ ] 18. Implement `editor.js` core: state, dirty-flag, three insertion-mode appliers, and `applyLLMResponse(mode, fragment)`
+- [x] 18. Implement `editor.js` core: state, dirty-flag, three insertion-mode appliers, and `applyLLMResponse(mode, fragment)`
   - Module-scoped state: `bufferEl`, `currentPath = null`, `savedSnapshot = ""`, `hadBom = false`, `lineEnding = "none"`, `streamActive = false`, `streamAnchor = null`.
   - Public surface (Req 16.1): `openFile`, `saveFile`, `saveFileAs`, `sendToLLM`, `applyLLMResponse(mode, fragment)`, `loadSettings`, `saveSettings`. Plus `initialize()`, `isDirty()`, and the undo/redo entry points implemented in Task 21.
   - `applyLLMResponse(mode, fragment)` synchronously throws on any `mode` outside the three allowed strings before mutating anything (Req 16.3).
@@ -213,7 +213,7 @@ Pinned stack:
   - Generator: `mode` from `fc.oneof(fc.constantFrom("insert_at_cursor", "replace_selection", "replace_document"), fc.string({minLength:1, maxLength:32}))` weighted toward invalid strings. Assert: invalid modes throw synchronously and leave the buffer unchanged; valid modes do not throw.
   - **Validates: Requirements 16.3**
 
-- [ ] 19. Implement `status_bar.js`: render path, dirty asterisk, character count, model name, error reason
+- [x] 19. Implement `status_bar.js`: render path, dirty asterisk, character count, model name, error reason
   - `renderStatusBar({ path, charCount, model, dirty, error })` writes the formatted string into `<footer id="status-bar">`.
   - `path` falls back to `"Untitled"` when null; the dirty asterisk is prefixed with no intervening characters; `model` falls back to `"(no model)"` when empty; `charCount` is the Unicode code-point length of the current buffer.
   - When `error` is present the status bar shows it verbatim (Req 14.6). The status-bar listens to the textarea `input` event and re-renders within the same tick.
@@ -224,7 +224,7 @@ Pinned stack:
   - Path vs `Untitled`; dirty asterisk position with no intervening characters; `(no model)` fallback; error-reason verbatim rendering; model-update latency check using fake timers (Req 9.5).
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 14.6_
 
-- [ ] 20. Implement `editor.js` typed-input grouping, paste, cut, and Open File stack-clearing
+- [x] 20. Implement `editor.js` typed-input grouping, paste, cut, and Open File stack-clearing
   - Define module-private constants `UNDO_REDO_CAPACITY = 200`, arrays `undoStack = []`, `redoStack = []`, and helper `pushOnto(stack, group)` with FIFO eviction at capacity (Req 18.18–18.20).
   - `pushUndo(group, { fromRedo = false })` uses `pushOnto` and clears `redoStack` when `fromRedo === false` (Req 18.15).
   - `recordTypedKeystroke(keyEvent, change)` appends to the top group iff: top exists, `top.source === "typing"`, `Date.now() - top.lastAppendedAt <= 1000`, no `cursorJumped` flag fired since last append, and the key is not Enter (Req 18.2). Otherwise push a new typing group (Req 18.3). Enter always begins a new group and clears `cursorJumped` afterwards (Req 18.4).
@@ -235,7 +235,7 @@ Pinned stack:
   - Wire copy + cut + paste semantics into the editor so that zero-length cut/copy is a no-op (Req 8.3, 8.4, 8.5).
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 18.15, 18.16, 18.17, 18.18, 18.19, 18.20_
 
-- [ ] 21. Implement `editor.js` `undo()`, `redo()`, stream-group lifecycle, and `beforeinput` interceptor
+- [x] 21. Implement `editor.js` `undo()`, `redo()`, stream-group lifecycle, and `beforeinput` interceptor
   - On stream begin (`sendToLLM` resolution), allocate `streamAnchor.group` with `source: "stream"`, `beforeSelection` from the captured pre-stream selection, and an empty `changes: []`. Each insertion-mode applier appends one `{ at, deleted, inserted }` per token to `streamAnchor.group.changes` (Req 13.9, 18.7).
   - On `tauri://llm-complete` for any terminal arm: if `changes.length >= 1`, set `afterSelection` to the post-stream cursor/selection and call `pushUndo(streamAnchor.group)` (Req 18.8 end-of-stream, 18.9 cancel, 18.10 errors). If `changes.length === 0` (errored before any token), do not push (Req 18.10 precondition).
   - `undo()`: while `streamActive` is true, no-op (Req 18.21). Else pop top of `undoStack`; if empty, no-op (Req 18.12). Otherwise apply each change in reverse order with bounds-check fallback (validate `slice(at, at + codepointLen(deleted)) === deleted` and the index range; on mismatch abort group, leave both stacks unchanged, log to `console.error`, and surface `"undo/redo state desynchronized; please retry"` in the status bar). Restore `beforeSelection`, push onto `redoStack`, dispatch `input`.
@@ -267,7 +267,7 @@ Pinned stack:
   - Stream-active gating (Req 18.21): `editor.undo()` and `editor.redo()` are no-ops; `beforeinput` `historyUndo`/`historyRedo` still calls `preventDefault`.
   - _Requirements: 8.1, 8.2, 18.2, 18.3, 18.4, 18.5, 18.6, 18.15, 18.16, 18.17, 18.18, 18.19, 18.20, 18.21_
 
-- [ ] 22. Implement `menu.js`: menu bar HTML, action dispatch, keyboard shortcuts, gating
+- [x] 22. Implement `menu.js`: menu bar HTML, action dispatch, keyboard shortcuts, gating
   - Build the menu bar HTML matching Req 2.1–2.5 (File: Open, Save, Save As, Quit; Edit: Undo, Redo, Cut, Copy, Paste; AI: Send to Model, Settings; Help: About).
   - Detect `Cmd` vs `Ctrl` once at startup via `navigator.platform.toLowerCase().includes('mac')`.
   - Bind `Cmd/Ctrl+O`, `Cmd/Ctrl+S`, `Cmd/Ctrl+Shift+S`, `Cmd/Ctrl+L`. On match, check the gating predicates: `settingsModalOpen` (Req 3.6) and `streamActive` (Req 3.7); if either, return without acting (and still call `preventDefault` for document-modifying shortcuts so the browser does not run its built-in save-page action). Otherwise call `preventDefault` and dispatch.
@@ -280,7 +280,7 @@ Pinned stack:
   - macOS/Windows modifier branch; gating predicates for Req 3.6 (modal open) and Req 3.7 (stream active); Escape no-op when no stream/modal (Req 3.8); About dialog content (Req 2.8); Edit menu Undo/Redo dispatch.
   - _Requirements: 2.7, 2.8, 3.5, 3.6, 3.7, 3.8_
 
-- [ ] 23. Implement `settings_modal.js`: modal lifecycle, per-field validation, save/cancel
+- [x] 23. Implement `settings_modal.js`: modal lifecycle, per-field validation, save/cancel
   - Build the modal HTML with text inputs for `api_url`, `model`, `system_prompt`, numeric inputs for `temperature` and `max_tokens`, a `<select>` for `replace_mode` restricted to the three valid values, and Save / Cancel buttons.
   - On open (AI → Settings), pre-populate every field from `loadSettings()` (Req 11.1).
   - Inline validation (Req 11.4–11.7): `temperature` must be a number in `[0.0, 2.0]`; `max_tokens` an integer in `[1, 1_000_000]`; `api_url` must be a syntactically valid absolute URL with scheme `http` or `https`; `model` must be non-empty. On any failure, render an inline error adjacent to the offending field and do NOT save.
@@ -298,7 +298,7 @@ Pinned stack:
   - JS side (`src/__tests__/validator_parity.test.js`): Vitest test that reads the same corpus file, runs the JS validator from `settings_modal.js` against each `(field, value)`, and asserts identical decisions field by field. Exit non-zero if the corpus is missing so CI orders the Rust step first.
   - **Validates: Requirements 11.4, 11.5, 11.6, 11.7, 10.2, 10.3**
 
-- [ ] 24. Implement Send to Model end-to-end in `editor.js` and main.js event wiring
+- [x] 24. Implement Send to Model end-to-end in `editor.js` and main.js event wiring
   - `sendToLLM()` short-circuits with `"Nothing to send"` in the status bar when the resolved user-message content (selection if non-empty per Req 12.1, otherwise full buffer per Req 12.2) has length 0 in code points (Req 12.3).
   - Capture cursor/selection at stream start, allocate `streamAnchor` (mode = `replace_mode` from current settings, plus the new stream `EditGroup` from Task 21), set `streamActive = true`, render the in-progress indicator in the status bar (Req 12.6 visible indicator), and call `api.streamLlm(text, settings)`.
   - While `streamActive`, set `bufferEl.disabled = true` so keyboard and paste cannot modify the buffer (Req 12.6).
@@ -308,7 +308,7 @@ Pinned stack:
   - `tauri://llm-complete` handler: set `streamActive = false`, re-enable `bufferEl`, commit the stream `EditGroup` per Task 21, and if an error reason is present render it verbatim in the status bar (Req 13.6, 14.6, 14.7).
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 14.6, 14.7, 16.2_
 
-- [ ] 25. Implement Open / Save / Save As frontend flows and the dirty-buffer prompt
+- [x] 25. Implement Open / Save / Save As frontend flows and the dirty-buffer prompt
   - `openFile()` invokes the Tauri dialog plugin's `open` with extension filters `.txt`, `.md`, `.yaml`, `.yml`, `.pencil` plus an "All files" option (Req 4.1). Cancel leaves state unchanged (Req 4.2). If the buffer is dirty, show the Save / Discard / Cancel modal first (Req 4.3): Save invokes Save then proceeds; Discard proceeds without writing; Cancel aborts.
   - On a successful `open_file` invoke, replace the buffer, clear undo/redo, set `currentPath`, `savedSnapshot`, and the status bar; the backend already cached `BufferMeta` keyed by the path (Req 4.4).
   - `saveFile()`: if `currentPath` is set, call `save_file(currentPath, contents)`; on success update `savedSnapshot` and re-render the status bar (Req 5.4). On failure render the error verbatim and leave the buffer dirty (Req 5.5). If `currentPath` is null, delegate to `saveFileAs()` (Req 5.2).
@@ -325,18 +325,18 @@ Pinned stack:
   - Vitest harness wires the eight `httpmock` scenarios from Task 15.1 to the real `editor.js` via stubbed `tauri://llm-token` / `tauri://llm-complete` emitters and asserts: regardless of which terminal arm fires, exactly one entry is pushed onto `undoStack` per stream when at least one token has arrived, and zero entries when the stream errors before the first token.
   - _Requirements: 13.9, 18.8, 18.9, 18.10_
 
-- [ ] 26. Final-frame status-bar wiring and v0.1 non-goal enforcement
+- [x] 26. Final-frame status-bar wiring and v0.1 non-goal enforcement
   - The status bar is the sole error surface for backend command failures and `llm-complete` error payloads. Wire it as `setError(reason)` and clear on the next successful action (Req 14.6).
   - Audit the codebase to confirm no UI element exposes more than one buffer (Req 17.1), no syntax styling is applied (Req 17.2), no theme/font/color controls exist (Req 17.3), no plugin loader exists (Req 17.4), no autosave timer or focus-change writer exists (Req 17.5), no Markdown/HTML preview exists (Req 17.6), and no preview-mode toggle exists (Req 17.7). Add a comment in `main.js` listing each non-goal as a build-time invariant.
   - _Requirements: 9.4, 9.5, 14.6, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7_
 
-- [ ] 27. Cross-platform packaging and end-to-end smoke verification
+- [x] 27. Cross-platform packaging and end-to-end smoke verification
   - Configure `tauri.conf.json` `bundle.targets` for `app` on macOS and `nsis` (or default `msi` if simpler) on Windows so `cargo tauri build` produces a `.app` bundle on macOS and an `.exe` installer on Windows (Req 1.4).
   - Add a `scripts/smoke.md` runbook (executed by CI's macOS and Windows runners) covering: launch and assert window title `"LLIMEdit"` and 800×600 minimum (Req 1.1) with focus in the editor (Req 1.2); open a small `.txt` fixture and assert buffer + status bar (Req 4.4); type a few characters and assert the dirty asterisk appears (Req 9.6) then save and assert it disappears (Req 9.7); reopen the file and assert contents match; open Settings and change the model, save, assert the status bar updates within 200ms (Req 9.5); send a stub-backed streamed completion (using a `tauri-driver`-injected mock) and assert tokens appear and editor is writable on completion; quit, relaunch, assert model name persisted across restarts (Req 10 round-trip).
   - Add a `scripts/smoke.rs` (or shell) automation harness that exercises the `cargo tauri build` output end to end on each platform's CI runner.
   - _Requirements: 1.1, 1.2, 1.4, 1.5, 4.4, 9.5, 9.6, 9.7, 10.4, 10.8_
 
-- [ ] 28. Final checkpoint
+- [x] 28. Final checkpoint
   - Ensure all tests pass (`cargo test` in `src-tauri/`, `npm test` at repo root), the cross-platform build succeeds, and the smoke runbook is green on both macOS and Windows; ask the user if questions arise.
 
 ## Notes

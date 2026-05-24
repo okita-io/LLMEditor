@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 447b171c1500a4d996d8db11c0c8000b92a10b0debea8b7f11c5055f0230aaa9 # shrinks to s = Settings { api_url: "http://a", model: "\0", temperature: 1.1942376274120219, max_tokens: 1, replace_mode: InsertAtCursor, system_prompt: "" }
