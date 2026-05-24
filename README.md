@@ -11,6 +11,7 @@ Create a **super lightweight**, **open‑source**, **cross‑platform** (Windows
 - Receives and inserts/overwrites text from the model
 - Has zero heavy dependencies, zero bundlers, and minimal build times
 
+![SCREENSHOT](./docs/screenshot.jpg)
 ---
 
 ## **2. Tech Stack**
