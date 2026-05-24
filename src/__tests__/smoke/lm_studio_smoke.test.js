@@ -88,6 +88,23 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     expect(el.value.split("\n")).toEqual(["keep", "keep2"]);
   }, config.timeoutMs);
 
+  it("delete_span: removes part of a line", async () => {
+    const doc = '"items1":["car", "bike", "motorcycle", "van", "train"],';
+    const el = setupEditorHarness(doc);
+    const { start, end } = selectSubstring(doc, "motorcycle");
+    selectRange(el, start, end);
+
+    await editor.sendChatMessage(
+      'Use delete_span on line 1 to delete the word motorcycle (columns 27-36). Do not delete the whole line.'
+    );
+
+    expect(el.value).not.toContain("motorcycle");
+    expect(el.value).toContain('"items1"');
+    expect(el.value).toContain("bike");
+    expect(el.value).toContain("van");
+    expect(el.value.split("\n")).toHaveLength(1);
+  }, config.timeoutMs);
+
   it("context window: edits far from start in a large document", async () => {
     const head = Array.from({ length: 80 }, (_, i) => `row ${i + 1}`);
     const targetLine = "TARGET_LINE_FOR_SMOKE";
