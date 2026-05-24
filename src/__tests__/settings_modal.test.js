@@ -349,14 +349,6 @@ describe("open()", () => {
     expect(document.querySelector("#settings-temperature")).not.toBeNull();
     expect(document.querySelector("#settings-max-tokens")).not.toBeNull();
     expect(document.querySelector("#settings-system-prompt")).not.toBeNull();
-    const select = document.querySelector("#settings-replace-mode");
-    expect(select).not.toBeNull();
-    const opts = Array.from(select.querySelectorAll("option")).map((o) => o.value);
-    expect(opts).toEqual([
-      "insert_at_cursor",
-      "replace_selection",
-      "replace_document",
-    ]);
     expect(document.querySelector('button[data-action="cancel"]')).not.toBeNull();
     expect(document.querySelector('button[data-action="save"]')).not.toBeNull();
   });
@@ -378,7 +370,6 @@ describe("open()", () => {
     expect(inputValue("settings-model")).toBe("remote-model");
     expect(inputValue("settings-temperature")).toBe("1.3");
     expect(inputValue("settings-max-tokens")).toBe("5000");
-    expect(inputValue("settings-replace-mode")).toBe("insert_at_cursor");
     expect(inputValue("settings-system-prompt")).toBe("Be terse.");
   });
 
@@ -392,7 +383,6 @@ describe("open()", () => {
       "http://localhost:1234/v1/chat/completions"
     );
     expect(inputValue("settings-model")).toBe("local-model");
-    expect(inputValue("settings-replace-mode")).toBe("replace_document");
     const modalErr = document.querySelector(".modal-error");
     expect(modalErr.textContent).toBe("config dir denied");
   });
@@ -471,7 +461,6 @@ describe("Save with all-valid fields (Req 11.3)", () => {
     setInputValue("settings-model", "remote-model");
     setInputValue("settings-temperature", "0.7");
     setInputValue("settings-max-tokens", "1024");
-    setInputValue("settings-replace-mode", "insert_at_cursor");
     setInputValue("settings-system-prompt", "Be terse.");
 
     await submitForm();
@@ -482,7 +471,7 @@ describe("Save with all-valid fields (Req 11.3)", () => {
       model: "remote-model",
       temperature: 0.7,
       max_tokens: 1024,
-      replace_mode: "insert_at_cursor",
+      replace_mode: "replace_document",
       system_prompt: "Be terse.",
       tab_spaces: 4,
     });

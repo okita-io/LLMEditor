@@ -373,6 +373,33 @@ function registerEditorStatusListener() {
 }
 
 /**
+ * Subscribe to `settings:model-changed` CustomEvents dispatched by
+ * settings_modal.js after a successful save. Updates `statusState.model`
+ * and re-renders the status bar so the model name stays in sync.
+ *
+ * @returns {void}
+ */
+function registerModelChangedListener() {
+  if (typeof document === "undefined") return;
+  document.addEventListener("settings:model-changed", (event) => {
+    try {
+      const detail =
+        event && typeof event === "object" && "detail" in event
+          ? event.detail
+          : null;
+      const model =
+        detail && typeof detail === "object" && typeof detail.model === "string"
+          ? detail.model
+          : "";
+      statusState.model = model;
+      renderStatus();
+    } catch (e) {
+      console.error("settings:model-changed handler failed:", e);
+    }
+  });
+}
+
+/**
  * Wire the `tauri://close-requested` listener so the host window's
  * Quit / Cmd+Q / red-traffic-light close path runs the unsaved-changes
  * prompt before the WebView terminates (Req 7.1, 7.2).
@@ -510,6 +537,10 @@ export async function bootstrap() {
   // Status_Bar messages (Req 12.3, 12.6, 12.7, 14.6, undo desync)
   // render in the bar without us reaching into editor.js internals.
   registerEditorStatusListener();
+
+  // 6b. Subscribe to settings:model-changed so the status bar updates
+  // when the user saves new settings from the modal.
+  registerModelChangedListener();
 
   // 6a. Wire the close-requested guard so the Quit/window-close path
   // surfaces the unsaved-changes prompt before the window terminates

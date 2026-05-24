@@ -43,6 +43,7 @@
 
 import * as api from "./api.js";
 import * as editor from "./editor.js";
+import * as chat from "./chat.js";
 
 /* -------------------------------------------------------------------- */
 /* Validation bounds (mirror Rust `Settings::validate_field`).          */
@@ -451,17 +452,6 @@ function ensureModalBuilt() {
     return i;
   });
 
-  addField("settings-replace-mode", "replace_mode", "Replace Mode", () => {
-    const sel = document.createElement("select");
-    for (const value of REPLACE_MODE_VALUES) {
-      const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = replaceModeLabel(value);
-      sel.appendChild(opt);
-    }
-    return sel;
-  });
-
   addField("settings-tab-spaces", "tab_spaces", "Tab → Spaces", () => {
     const sel = document.createElement("select");
     for (const value of TAB_SPACES_VALUES) {
@@ -525,25 +515,6 @@ function ensureModalBuilt() {
   return root;
 }
 
-/**
- * Human-friendly label for each `replace_mode` option.
- *
- * @param {string} value
- * @returns {string}
- */
-function replaceModeLabel(value) {
-  switch (value) {
-    case "insert_at_cursor":
-      return "Insert at Cursor";
-    case "replace_selection":
-      return "Replace Selection";
-    case "replace_document":
-      return "Replace Document";
-    default:
-      return value;
-  }
-}
-
 /* -------------------------------------------------------------------- */
 /* Field helpers.                                                        */
 /* -------------------------------------------------------------------- */
@@ -562,7 +533,7 @@ function readFormValues() {
     model: getInputValue("settings-model"),
     temperature: getInputValue("settings-temperature"),
     max_tokens: getInputValue("settings-max-tokens"),
-    replace_mode: getInputValue("settings-replace-mode"),
+    replace_mode: "replace_document",
     system_prompt: getInputValue("settings-system-prompt"),
     tab_spaces: getInputValue("settings-tab-spaces"),
   };
@@ -608,13 +579,6 @@ function applySettingsToForm(settings) {
   setInputValue("settings-model", merged.model);
   setInputValue("settings-temperature", merged.temperature);
   setInputValue("settings-max-tokens", merged.max_tokens);
-  // Replace mode falls back to a known-valid option if the loaded
-  // value is outside the allowed set; keeps the <select> in a
-  // selectable state even with corrupt input.
-  const rmode = REPLACE_MODE_VALUES.includes(merged.replace_mode)
-    ? merged.replace_mode
-    : FALLBACK_DEFAULTS.replace_mode;
-  setInputValue("settings-replace-mode", rmode);
   const tabSpaces = TAB_SPACES_VALUES.includes(Number(merged.tab_spaces))
     ? merged.tab_spaces
     : FALLBACK_DEFAULTS.tab_spaces;
@@ -780,6 +744,19 @@ async function onSubmit() {
   try {
     await api.saveSettings(result.values);
     editor.applyEditorSettings(result.values);
+    // Propagate the new model name to the status bar and chat panel
+    // so the UI reflects the change without requiring a restart.
+    if (typeof result.values.model === "string") {
+      chat.setModelName(result.values.model);
+      // Notify main.js to update its statusState.model via custom event.
+      if (typeof document !== "undefined" && typeof CustomEvent === "function") {
+        document.dispatchEvent(
+          new CustomEvent("settings:model-changed", {
+            detail: { model: result.values.model },
+          })
+        );
+      }
+    }
     close();
   } catch (err) {
     // Req 11.9: keep the modal open, surface the failure in the

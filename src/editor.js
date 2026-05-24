@@ -846,47 +846,13 @@ export async function _promptDirtyBuffer() {
 
 /**
  * Send the current selection (or the full Buffer when no selection
- * exists) to the LM Studio endpoint, stream the response back into the
- * Editor, and surface progress/errors via the Status_Bar (Req 12.1,
- * 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 13.2, 13.3, 13.4, 14.6, 14.7).
+ * exists) to the model via the agent/tool-use loop, and surface
+ * progress/errors via the Status_Bar.
  *
- * Pre-conditions and short-circuits, in order:
- *   1. If a stream is already active, dispatch an `editor:status`
- *      event with the literal "A request is already in progress" and
- *      return without calling the backend (Req 12.7).
- *   2. Load the current settings via `api.loadSettings()`. The
- *      `replace_mode` field of the resolved settings becomes the
- *      Insertion_Mode for this stream (Req 13.2-13.4).
- *   3. Resolve the user-message content: when
- *      `selectionStart !== selectionEnd` use `bufferEl.value.slice(
- *      selectionStart, selectionEnd)` (Req 12.1); otherwise use the
- *      entire `bufferEl.value` (Req 12.2).
- *   4. If the resolved content is empty in Unicode code points,
- *      dispatch an `editor:status` event with the literal "Nothing
- *      to send" and return without opening a connection (Req 12.3).
- *
- * Stream lifecycle:
- *   - Allocate `streamAnchor` via `_beginStream(settings.replace_mode)`.
- *     `_beginStream` captures the cursor/selection at start and
- *     allocates the in-progress `Edit_Group` for the eventual
- *     single-Undo commit (Req 13.9, 18.7).
- *   - Set `bufferEl.disabled = true` so the textarea rejects every
- *     keyboard and paste input that would modify the Buffer
- *     (Req 12.6).
- *   - Dispatch an `editor:status` event with a visible in-progress
- *     indicator (Req 12.6); main.js renders this verbatim in the
- *     Status_Bar.
- *   - Invoke `api.streamLlm(text, settings)`. The backend returns
- *     within ~200ms after spawning its worker (Req 15.4); subsequent
- *     `tauri://llm-token` and `tauri://llm-complete` events drive the
- *     rest of the lifecycle through `_handleStreamToken` and
- *     `_handleStreamComplete`.
- *
- * If `api.streamLlm` rejects synchronously (e.g. the backend reports
- * `"a stream is already active"` because of a stale single-flight
- * slot), tear down the anchor via `_endStream()`, re-enable
- * `bufferEl`, and surface the rejection reason as an `editor:status`
- * event so the Status_Bar mirrors the failure (Req 14.6, 14.7).
+ * When a selection exists, the selected text is sent as the user
+ * message. When no selection exists, the full buffer content is sent.
+ * Empty content dispatches "Nothing to send" without calling the
+ * backend.
  *
  * @returns {Promise<void>}
  */
@@ -901,7 +867,7 @@ export async function sendToLLM() {
   const text =
     selStart !== selEnd ? value.slice(selStart, selEnd) : value;
 
-  await _sendPromptToLLM(text);
+  await _sendAgentPrompt(text);
 }
 
 /**
@@ -1141,77 +1107,6 @@ function _completeAgentEdit() {
   pushUndo(agentEditGroup);
   agentEditGroup = null;
   agentEditBuffer = "";
-}
-
-/**
- * Shared LLM send path for menu/shortcut and chat panel invocations.
- *
- * @param {string} text
- * @returns {Promise<void>}
- */
-async function _sendPromptToLLM(text) {
-
-  // Req 12.7: a second invocation while a stream is active is
-  // dropped with the documented status message.
-  if (streamActive) {
-    _emitStatus("A request is already in progress");
-    return;
-  }
-
-  let settings;
-  try {
-    settings = await api.loadSettings();
-  } catch (err) {
-    _emitStatus(_errorMessage(err));
-    return;
-  }
-
-  // Req 12.3: 0 code points -> "Nothing to send", no backend call.
-  if (text.length === 0) {
-    _emitStatus("Nothing to send");
-    return;
-  }
-
-  // Allocate the stream anchor + Edit_Group at the captured
-  // cursor/selection (Req 13.2-13.4, 13.9, 18.7) and flip
-  // `streamActive` so the gating in undo/redo and recordTypedKeystroke
-  // takes effect.
-  const mode =
-    settings && typeof settings.replace_mode === "string"
-      ? settings.replace_mode
-      : "replace_document";
-  try {
-    _beginStream(mode);
-  } catch (err) {
-    // An invalid `replace_mode` from settings (defensive only — the
-    // backend validates this) would throw out of `_beginStream`. Surface
-    // it via the same channel the rest of the failure paths use.
-    _emitStatus(_errorMessage(err));
-    return;
-  }
-
-  _emitChatStart(text);
-
-  // Req 12.6: disable the textarea so keyboard and paste input cannot
-  // modify the Buffer while the stream is in flight. The
-  // `tauri://llm-complete` handler re-enables it.
-  bufferEl.disabled = true;
-  // Req 12.6 visible indicator: dispatch the "Streaming…" status so
-  // main.js can render it in the Status_Bar.
-  _emitStatus("Streaming…");
-
-  try {
-    await api.streamLlm(text, settings);
-  } catch (err) {
-    // Synchronous rejection (e.g. the backend's "a stream is already
-    // active" single-flight error). Roll back the local state so the
-    // editor is usable again and surface the reason in the
-    // Status_Bar (Req 14.6, 14.7).
-    _endStream();
-    bufferEl.disabled = false;
-    _emitStatus(_errorMessage(err));
-    _emitChatComplete();
-  }
 }
 
 export async function loadSettings() {}
