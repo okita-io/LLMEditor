@@ -2,15 +2,6 @@
 // Copyright (c) 2026 okita.io
 //
 // Configurable smoke test scenarios for LLM tool-use validation.
-//
-// Each scenario defines:
-//   - name: human-readable label
-//   - document: initial document content
-//   - selection: substring to select (or null for no selection)
-//   - prompt: instruction sent to the LLM
-//   - validate: function(resultText) => { pass, reason }
-//   - tool: expected tool name (for logging)
-//   - description: what the scenario exercises
 
 /**
  * @typedef {{
@@ -26,15 +17,15 @@
  */
 
 /** @type {SmokeScenario[]} */
-export const REPLACE_RANGE_SCENARIOS = [
+export const REPLACE_LINE_SCENARIOS = [
   {
     name: "replace single line with exact text",
     description: "LLM replaces a marked line with a specific string",
-    tool: "replace_range",
+    tool: "replace_line",
     document: "header\nREPLACE_ME\nfooter",
     selection: "REPLACE_ME",
     prompt:
-      "Use replace_range on line 2 only. Set line 2 to exactly: SMOKE_OK",
+      "Use replace_line on line 2 only. Set line 2 to exactly: SMOKE_OK",
     validate: (result) => {
       const lines = result.split("\n");
       if (!result.includes("SMOKE_OK")) {
@@ -56,13 +47,13 @@ export const REPLACE_RANGE_SCENARIOS = [
     },
   },
   {
-    name: "replace multiple lines with single line",
-    description: "LLM collapses a multi-line range into one line",
-    tool: "replace_range",
+    name: "collapse multiple lines into one inserted line",
+    description: "LLM deletes a multi-line range and inserts a replacement line",
+    tool: "delete_range+insert_text",
     document: "keep\nremove_a\nremove_b\nremove_c\nkeep_end",
     selection: "remove_a\nremove_b\nremove_c",
     prompt:
-      "Use replace_range on lines 2-4 to replace them with a single line: COLLAPSED",
+      "Use delete_range on lines 2-4, then use insert_text on line 2 at column 1 to insert exactly: COLLAPSED\\n (with a trailing newline). Keep keep and keep_end unchanged.",
     validate: (result) => {
       if (!result.includes("COLLAPSED")) {
         return { pass: false, reason: "missing COLLAPSED" };
@@ -83,11 +74,11 @@ export const REPLACE_RANGE_SCENARIOS = [
   {
     name: "replace line with multi-line expansion",
     description: "LLM expands a single line into multiple lines",
-    tool: "replace_range",
+    tool: "replace_line",
     document: "before\nEXPAND_ME\nafter",
     selection: "EXPAND_ME",
     prompt:
-      "Use replace_range on line 2 to replace it with exactly two lines: line_a\\nline_b (use a literal newline between them)",
+      "Use replace_line on line 2 to replace it with exactly two lines: line_a\\nline_b (use a literal newline between them)",
     validate: (result) => {
       if (!result.includes("line_a") || !result.includes("line_b")) {
         return { pass: false, reason: "expansion lines missing" };
@@ -100,6 +91,36 @@ export const REPLACE_RANGE_SCENARIOS = [
       }
       return { pass: true, reason: "single-to-multi expansion correct" };
     },
+  },
+];
+
+/** @type {SmokeScenario[]} */
+export const REPLACE_SPAN_SCENARIOS = [
+  {
+    name: "replace substring within a line",
+    description: "LLM changes part of a line without rewriting the whole line",
+    tool: "replace_span",
+    document: '"items1":["car", "bike", "motorcycle", "van", "train"],',
+    selection: "motorcycle",
+    prompt:
+      'Use replace_span on line 1 to replace the word motorcycle (columns 27-36) with apple. Do not rewrite the whole line.',
+    validate: (result) => {
+      const expected = '"items1":["car", "bike", "apple", "van", "train"],';
+      if (result === expected) {
+        return { pass: true, reason: "span replaced correctly" };
+      }
+      if (!result.includes("apple")) {
+        return { pass: false, reason: "apple not found" };
+      }
+      if (result.includes("motorcycle")) {
+        return { pass: false, reason: "motorcycle still present" };
+      }
+      if (!result.includes('"items1"')) {
+        return { pass: false, reason: "whole line was rewritten instead of span edit" };
+      }
+      return { pass: true, reason: "partial span edit applied" };
+    },
+    retries: 2,
   },
 ];
 
@@ -219,7 +240,7 @@ export const CONTEXT_WINDOW_SCENARIOS = [
   {
     name: "edit line in middle of large document",
     description: "LLM correctly targets a line far from the start using context window",
-    tool: "replace_range",
+    tool: "replace_line",
     document: (() => {
       const head = Array.from({ length: 80 }, (_, i) => `row ${i + 1}`);
       const target = "TARGET_LINE_FOR_SMOKE";
@@ -228,7 +249,7 @@ export const CONTEXT_WINDOW_SCENARIOS = [
     })(),
     selection: "TARGET_LINE_FOR_SMOKE",
     prompt:
-      "The selected line is near line 81. Use replace_range on that line only to set it to exactly: WINDOW_OK",
+      "The selected line is near line 81. Use replace_line on that line only to set it to exactly: WINDOW_OK",
     validate: (result) => {
       if (!result.includes("WINDOW_OK")) {
         return { pass: false, reason: "WINDOW_OK not found" };
@@ -249,7 +270,7 @@ export const CONTEXT_WINDOW_SCENARIOS = [
   {
     name: "edit near end of large document",
     description: "LLM targets a line near the end of a large document",
-    tool: "replace_range",
+    tool: "replace_line",
     document: (() => {
       const lines = Array.from({ length: 150 }, (_, i) => `line_${i + 1}`);
       lines[148] = "NEAR_END_TARGET";
@@ -257,7 +278,7 @@ export const CONTEXT_WINDOW_SCENARIOS = [
     })(),
     selection: "NEAR_END_TARGET",
     prompt:
-      "The selected line is near line 149. Use replace_range on that line to set it to exactly: END_OK",
+      "The selected line is near line 149. Use replace_line on that line to set it to exactly: END_OK",
     validate: (result) => {
       if (!result.includes("END_OK")) {
         return { pass: false, reason: "END_OK not found" };
@@ -275,11 +296,11 @@ export const MULTI_TOOL_SCENARIOS = [
   {
     name: "multiple edits in sequence",
     description: "LLM performs two tool calls in one agent turn",
-    tool: "replace_range+insert_text",
+    tool: "replace_line+insert_text",
     document: "title\nold_content\nfooter",
     selection: "old_content",
     prompt:
-      "Make two changes: 1) Use replace_range on line 2 to change it to 'new_content', 2) Use insert_text on line 1 at column 6 to append '_updated'. The final document should have 'title_updated' on line 1 and 'new_content' on line 2.",
+      "Make two changes: 1) Use replace_line on line 2 to change it to 'new_content', 2) Use insert_text on line 1 at column 6 to append '_updated'. The final document should have 'title_updated' on line 1 and 'new_content' on line 2.",
     validate: (result) => {
       const hasNewContent = result.includes("new_content");
       const hasUpdatedTitle =
@@ -307,11 +328,10 @@ export const ERROR_RECOVERY_SCENARIOS = [
   {
     name: "handles out-of-range line gracefully",
     description: "LLM attempts to edit a line beyond document bounds; tool clamps it",
-    tool: "replace_range",
+    tool: "replace_line",
     document: "only_line",
     selection: "only_line",
-    prompt:
-      "Use replace_range on line 1 to set it to exactly: CLAMPED_OK",
+    prompt: "Use replace_line on line 1 to set it to exactly: CLAMPED_OK",
     validate: (result) => {
       if (result.includes("CLAMPED_OK")) {
         return { pass: true, reason: "edit applied (line clamped)" };
@@ -321,11 +341,9 @@ export const ERROR_RECOVERY_SCENARIOS = [
   },
 ];
 
-/**
- * All scenarios grouped by category for selective execution.
- */
 export const ALL_SCENARIOS = {
-  replace_range: REPLACE_RANGE_SCENARIOS,
+  replace_line: REPLACE_LINE_SCENARIOS,
+  replace_span: REPLACE_SPAN_SCENARIOS,
   insert_text: INSERT_TEXT_SCENARIOS,
   delete_range: DELETE_RANGE_SCENARIOS,
   context_window: CONTEXT_WINDOW_SCENARIOS,
@@ -333,11 +351,7 @@ export const ALL_SCENARIOS = {
   error_recovery: ERROR_RECOVERY_SCENARIOS,
 };
 
-/**
- * Flatten all scenarios into a single array.
- *
- * @returns {SmokeScenario[]}
- */
+/** @returns {SmokeScenario[]} */
 export function allScenarios() {
   return Object.values(ALL_SCENARIOS).flat();
 }

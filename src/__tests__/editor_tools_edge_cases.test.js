@@ -19,6 +19,8 @@ import {
   getDocumentSnapshot,
   gotoLine,
   insertText,
+  replaceLine,
+  replaceSpan,
   replaceRange,
   deleteRange,
   executeTool,
@@ -116,6 +118,46 @@ describe("insertText edge cases", () => {
     const result = insertText("café\n日本語", 2, 4, "テスト");
     expect(result.ok).toBe(true);
     expect(result.text).toContain("日本語テスト");
+  });
+});
+
+describe("replaceLine edge cases", () => {
+  it("replaces the only line in a single-line document", () => {
+    const result = replaceLine("only", 1, "replaced");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("replaced");
+  });
+
+  it("handles empty replacement (effectively a delete)", () => {
+    const result = replaceLine("a\nb\nc", 2, "");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("a\n\nc");
+  });
+
+  it("handles replacement with multiple newlines", () => {
+    const result = replaceLine("a\nb\nc", 2, "x\ny\nz");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("a\nx\ny\nz\nc");
+  });
+});
+
+describe("replaceSpan edge cases", () => {
+  it("replaces an inclusive column span", () => {
+    const result = replaceSpan("hello", 1, 2, 4, "ip");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("hipo");
+  });
+
+  it("swaps reversed column ranges", () => {
+    const result = replaceSpan("abcdef", 1, 5, 2, "X");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("aXf");
+  });
+
+  it("clamps columns beyond line length", () => {
+    const result = replaceSpan("short", 1, 3, 999, "!");
+    expect(result.ok).toBe(true);
+    expect(result.text).toBe("sh!");
   });
 });
 
@@ -223,8 +265,8 @@ describe("executeTool — get_document", () => {
 describe("executeTool — changed detection", () => {
   it("reports changed: true when text differs", () => {
     const result = executeTool(
-      "replace_range",
-      { start_line: 1, end_line: 1, text: "new" },
+      "replace_line",
+      { line: 1, text: "new" },
       { text: "old" }
     );
     expect(result.changed).toBe(true);
@@ -232,11 +274,21 @@ describe("executeTool — changed detection", () => {
 
   it("reports changed: false when text is identical", () => {
     const result = executeTool(
-      "replace_range",
-      { start_line: 1, end_line: 1, text: "same" },
+      "replace_line",
+      { line: 1, text: "same" },
       { text: "same" }
     );
     expect(result.changed).toBe(false);
+  });
+
+  it("supports legacy replace_range for single-line edits", () => {
+    const result = executeTool(
+      "replace_range",
+      { start_line: 1, end_line: 1, text: "new" },
+      { text: "old" }
+    );
+    expect(result.changed).toBe(true);
+    expect(result.new_text).toBe("new");
   });
 
   it("reports changed: false for goto_line (non-mutating)", () => {

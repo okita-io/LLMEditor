@@ -103,11 +103,70 @@ export function insertText(text, line, column, insertText) {
 }
 
 /**
+ * @param {number} column 1-based
+ * @param {number} lineLength
+ * @returns {number}
+ */
+function clampColumn(column, lineLength) {
+  const max = Math.max(1, lineLength + 1);
+  const n = Number.isFinite(column) ? Math.trunc(column) : 1;
+  return Math.min(Math.max(1, n), max);
+}
+
+/**
+ * @param {string} text
+ * @param {number} line 1-based
+ * @param {string} replacement
+ * @returns {{ ok: true, text: string, line: number, end_line: number } | { ok: false, error: string }}
+ */
+export function replaceLine(text, line, replacement) {
+  const lines = splitLines(text);
+  const ln = clampLine(line, lines.length);
+  const newLines = splitLines(typeof replacement === "string" ? replacement : "");
+  const updated = [...lines.slice(0, ln - 1), ...newLines, ...lines.slice(ln)];
+  return {
+    ok: true,
+    text: joinLines(updated),
+    line: ln,
+    end_line: ln + newLines.length - 1,
+  };
+}
+
+/**
+ * @param {string} text
+ * @param {number} line 1-based
+ * @param {number} startColumn 1-based inclusive
+ * @param {number} endColumn 1-based inclusive
+ * @param {string} replacement
+ * @returns {{ ok: true, text: string, line: number, start_column: number, end_column: number } | { ok: false, error: string }}
+ */
+export function replaceSpan(text, line, startColumn, endColumn, replacement) {
+  const lines = splitLines(text);
+  const ln = clampLine(line, lines.length);
+  const current = lines[ln - 1] ?? "";
+  let startCol = clampColumn(startColumn, current.length);
+  let endCol = clampColumn(endColumn, current.length);
+  if (startCol > endCol) [startCol, endCol] = [endCol, startCol];
+  const startIdx = Math.min(startCol - 1, current.length);
+  const endIdx = Math.min(endCol, current.length);
+  const insert = typeof replacement === "string" ? replacement : "";
+  lines[ln - 1] = current.slice(0, startIdx) + insert + current.slice(endIdx);
+  return {
+    ok: true,
+    text: joinLines(lines),
+    line: ln,
+    start_column: startCol,
+    end_column: endCol,
+  };
+}
+
+/**
  * @param {string} text
  * @param {number} startLine 1-based inclusive
  * @param {number} endLine 1-based inclusive
  * @param {string} replacement
  * @returns {{ ok: true, text: string, start_line: number, end_line: number } | { ok: false, error: string }}
+ * @deprecated Legacy multi-line helper; prefer replace_line or delete_range + insert_text.
  */
 export function replaceRange(text, startLine, endLine, replacement) {
   const lines = splitLines(text);
@@ -192,17 +251,46 @@ export function executeTool(name, args, ctx) {
         new_text: result.text,
       });
     }
-    case "replace_range": {
-      const result = replaceRange(
+    case "replace_line": {
+      const result = replaceLine(text, Number(args.line ?? 1), String(args.text ?? ""));
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
+        ok: true,
+        line: result.line,
+        end_line: result.end_line,
+        new_text: result.text,
+      });
+    }
+    case "replace_span": {
+      const result = replaceSpan(
         text,
-        Number(args.start_line ?? 1),
-        Number(args.end_line ?? 1),
+        Number(args.line ?? 1),
+        Number(args.start_column ?? 1),
+        Number(args.end_column ?? 1),
         String(args.text ?? "")
       );
       if (!result.ok) return { ...result, changed: false };
       return withChanged({
         ok: true,
-        start_line: result.start_line,
+        line: result.line,
+        start_column: result.start_column,
+        end_column: result.end_column,
+        new_text: result.text,
+      });
+    }
+    case "replace_range": {
+      const startLine = Number(args.start_line ?? 1);
+      const endLine = Number(args.end_line ?? 1);
+      const replacement = String(args.text ?? "");
+      const result =
+        startLine === endLine
+          ? replaceLine(text, startLine, replacement)
+          : replaceRange(text, startLine, endLine, replacement);
+      if (!result.ok) return { ...result, changed: false };
+      return withChanged({
+        ok: true,
+        line: "line" in result ? result.line : result.start_line,
+        start_line: "start_line" in result ? result.start_line : result.line,
         end_line: result.end_line,
         new_text: result.text,
       });

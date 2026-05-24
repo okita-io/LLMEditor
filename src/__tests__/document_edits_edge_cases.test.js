@@ -99,7 +99,15 @@ describe("extractDocumentEdits — array of tool calls", () => {
 });
 
 describe("extractDocumentEdits — shape detection", () => {
-  it("detects replace_range shape (start_line + end_line + text)", () => {
+  it("detects replace_line shape when start_line equals end_line", () => {
+    const text = '```json\n{"start_line": 5, "end_line": 5, "text": "new content"}\n```';
+    const edits = extractDocumentEdits(text);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].name).toBe("replace_line");
+    expect(edits[0].source).toBe("replace_line-shape");
+  });
+
+  it("detects legacy replace_range shape for multi-line spans", () => {
     const text = '```json\n{"start_line": 5, "end_line": 7, "text": "new content"}\n```';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
@@ -107,12 +115,29 @@ describe("extractDocumentEdits — shape detection", () => {
     expect(edits[0].source).toBe("replace_range-shape");
   });
 
-  it("detects insert_text shape (line + text)", () => {
-    const text = '```json\n{"line": 3, "text": "inserted"}\n```';
+  it("detects insert_text shape (line + column + text)", () => {
+    const text = '```json\n{"line": 3, "column": 1, "text": "inserted"}\n```';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
     expect(edits[0].name).toBe("insert_text");
     expect(edits[0].source).toBe("insert_text-shape");
+  });
+
+  it("detects replace_line shape (line + text without column)", () => {
+    const text = '```json\n{"line": 3, "text": "inserted"}\n```';
+    const edits = extractDocumentEdits(text);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].name).toBe("replace_line");
+    expect(edits[0].source).toBe("replace_line-shape");
+  });
+
+  it("detects replace_span shape (line + start_column + end_column + text)", () => {
+    const text =
+      '```json\n{"line": 2, "start_column": 10, "end_column": 19, "text": "apple"}\n```';
+    const edits = extractDocumentEdits(text);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].name).toBe("replace_span");
+    expect(edits[0].source).toBe("replace_span-shape");
   });
 
   it("detects delete_range shape (start_line + end_line, no text)", () => {
@@ -135,21 +160,19 @@ describe("extractDocumentEdits — inline JSON", () => {
 
   it("extracts name-style inline JSON", () => {
     const text =
-      'Call {"name": "replace_range", "arguments": {"start_line": 1, "end_line": 1, "text": "x"}} now.';
+      'Call {"name": "replace_line", "arguments": {"line": 1, "text": "x"}} now.';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
-    expect(edits[0].name).toBe("replace_range");
+    expect(edits[0].name).toBe("replace_line");
   });
 });
 
 describe("extractDocumentEdits — function-call style", () => {
-  it("extracts replace_range({})", () => {
+  it("extracts replace_line from legacy replace_range function-call shape", () => {
     const text = 'replace_range({"start_line": 2, "end_line": 2, "text": "done"})';
     const edits = extractDocumentEdits(text);
     expect(edits).toHaveLength(1);
-    expect(edits[0].name).toBe("replace_range");
-    // The inline regex may match first with shape detection; the key
-    // assertion is that the edit is extracted with the correct name.
+    expect(edits[0].name).toBe("replace_line");
   });
 
   it("extracts delete_range({})", () => {
@@ -199,8 +222,13 @@ describe("assistantTextLooksLikeUnappliedEdits", () => {
     expect(assistantTextLooksLikeUnappliedEdits(text)).toBe(true);
   });
 
-  it("returns true for text with replace_range JSON", () => {
+  it("returns true for text with replace_line JSON", () => {
     const text = '{"start_line": 1, "end_line": 1, "text": "x"}';
+    expect(assistantTextLooksLikeUnappliedEdits(text)).toBe(true);
+  });
+
+  it("returns true for text with replace_span JSON", () => {
+    const text = '{"line": 1, "start_column": 2, "end_column": 4, "text": "x"}';
     expect(assistantTextLooksLikeUnappliedEdits(text)).toBe(true);
   });
 
@@ -220,7 +248,7 @@ describe("assistantTextLooksLikeUnappliedEdits", () => {
   it("returns false for code that mentions tools but has no JSON", () => {
     expect(
       assistantTextLooksLikeUnappliedEdits(
-        "You can use replace_range to edit lines."
+        "You can use replace_line to edit lines."
       )
     ).toBe(false);
   });

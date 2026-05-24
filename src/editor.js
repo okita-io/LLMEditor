@@ -1078,11 +1078,13 @@ function _applyAgentToolResult(el, name, result) {
  */
 function _scrollToToolResult(el, name, result) {
   const line =
-    name === "replace_range"
-      ? Number(result.start_line)
-      : name === "insert_text"
-        ? Number(result.line)
-        : NaN;
+    name === "replace_line" || name === "replace_span"
+      ? Number(result.line)
+      : name === "replace_range"
+        ? Number(result.start_line)
+        : name === "insert_text"
+          ? Number(result.line)
+          : NaN;
   if (!Number.isFinite(line)) return;
   editorTools.applyGotoLine(el, { ok: true, line });
 }

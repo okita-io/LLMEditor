@@ -1251,8 +1251,8 @@ mod tests {
                         "id": "call_1",
                         "type": "function",
                         "function": {
-                            "name": "replace_range",
-                            "arguments": "{\"start_line\":1,\"end_line\":1,\"text\":\"hi\"}"
+                            "name": "replace_line",
+                            "arguments": "{\"line\":1,\"text\":\"hi\"}"
                         }
                     }]
                 }
@@ -1262,7 +1262,7 @@ mod tests {
         assert!(parsed.content.is_none());
         assert_eq!(parsed.finish_reason.as_deref(), Some("tool_calls"));
         assert_eq!(parsed.tool_calls.len(), 1);
-        assert_eq!(parsed.tool_calls[0].name, "replace_range");
+        assert_eq!(parsed.tool_calls[0].name, "replace_line");
         assert_eq!(parsed.tool_calls[0].id, "call_1");
     }
 

@@ -44,14 +44,14 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     expect(model).toBeTruthy();
   });
 
-  it("replace_range: edits a selected line via chat agent", async () => {
+  it("replace_line: edits a selected line via chat agent", async () => {
     const doc = "header\nREPLACE_ME\nfooter";
     const el = setupEditorHarness(doc);
     const { start, end } = selectSubstring(doc, "REPLACE_ME");
     selectRange(el, start, end);
 
     await editor.sendChatMessage(
-      "Use replace_range on line 2 only. Set line 2 to exactly: SMOKE_OK"
+      "Use replace_line on line 2 only. Set line 2 to exactly: SMOKE_OK"
     );
 
     expect(el.value).toContain("SMOKE_OK");
@@ -98,7 +98,7 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     selectRange(el, start, end);
 
     await editor.sendChatMessage(
-      "The selected line is near line 81. Use replace_range on that line only to set it to exactly: WINDOW_OK"
+      "The selected line is near line 81. Use replace_line on that line only to set it to exactly: WINDOW_OK"
     );
 
     expect(el.value).toContain("WINDOW_OK");
@@ -114,7 +114,7 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     const before = el.value;
 
     await editor.sendChatMessage(
-      "Use replace_range on line 2 to change it to exactly: CHANGED"
+      "Use replace_line on line 2 to change it to exactly: CHANGED"
     );
 
     expect(el.value).not.toBe(before);

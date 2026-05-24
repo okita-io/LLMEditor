@@ -168,18 +168,18 @@ describe("assistant message lifecycle", () => {
 describe("appendToolCall", () => {
   it("renders a tool bubble with name and args", () => {
     installDom();
-    appendToolCall("replace_range", '{"start_line":1,"end_line":1,"text":"x"}');
+    appendToolCall("replace_line", '{"line":1,"text":"x"}');
     const bubble = document.querySelector(".chat-bubble-tool");
     expect(bubble).not.toBeNull();
-    expect(bubble.textContent).toContain("replace_range");
-    expect(bubble.textContent).toContain("start_line");
+    expect(bubble.textContent).toContain("replace_line");
+    expect(bubble.textContent).toContain("line");
   });
 });
 
 describe("appendToolResult", () => {
   it("renders a success result", () => {
     installDom();
-    appendToolResult("replace_range", { ok: true, changed: true });
+    appendToolResult("replace_line", { ok: true, changed: true });
     const bubble = document.querySelector(".chat-bubble-tool-result");
     expect(bubble).not.toBeNull();
     expect(bubble.textContent).toContain("applied");
@@ -195,7 +195,7 @@ describe("appendToolResult", () => {
 
   it("renders a no-change result", () => {
     installDom();
-    appendToolResult("replace_range", { ok: true, changed: false });
+    appendToolResult("replace_line", { ok: true, changed: false });
     const bubble = document.querySelector(".chat-bubble-tool-result");
     expect(bubble.textContent).toContain("no change");
   });

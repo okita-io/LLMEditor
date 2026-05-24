@@ -55,17 +55,41 @@ export function editorToolDefinitions() {
     {
       type: "function",
       function: {
-        name: "replace_range",
+        name: "replace_line",
         description:
-          "Replace an inclusive 1-based line range with new text (may span multiple lines).",
+          "Replace the entire content of a single line. text is the full new line content (not a substring). If text contains newlines, the line expands into multiple lines.",
         parameters: {
           type: "object",
           properties: {
-            start_line: { type: "integer", description: "First line (1-based)" },
-            end_line: { type: "integer", description: "Last line inclusive (1-based)" },
-            text: { type: "string", description: "Replacement text" },
+            line: { type: "integer", description: "1-based line number" },
+            text: { type: "string", description: "Complete replacement content for the line" },
           },
-          required: ["start_line", "end_line", "text"],
+          required: ["line", "text"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "replace_span",
+        description:
+          "Replace a character span within a single line. Use this to change part of a line without rewriting the whole line. Columns are 1-based and inclusive.",
+        parameters: {
+          type: "object",
+          properties: {
+            line: { type: "integer", description: "1-based line number" },
+            start_column: {
+              type: "integer",
+              description: "First column to replace (1-based, inclusive)",
+            },
+            end_column: {
+              type: "integer",
+              description: "Last column to replace (1-based, inclusive)",
+            },
+            text: { type: "string", description: "Replacement text for the span" },
+          },
+          required: ["line", "start_column", "end_column", "text"],
           additionalProperties: false,
         },
       },

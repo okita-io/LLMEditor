@@ -69,7 +69,7 @@ describe("runAgent — invalid tool arguments", () => {
         tool_calls: [
           {
             id: "call_bad",
-            name: "replace_range",
+            name: "replace_line",
             arguments: "not valid json {{{",
           },
         ],
@@ -161,8 +161,8 @@ describe("runAgent — multiple tool calls in one turn", () => {
         tool_calls: [
           {
             id: "call_1",
-            name: "replace_range",
-            arguments: JSON.stringify({ start_line: 1, end_line: 1, text: "first" }),
+            name: "replace_line",
+            arguments: JSON.stringify({ line: 1, text: "first" }),
           },
           {
             id: "call_2",

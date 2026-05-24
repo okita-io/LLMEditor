@@ -53,10 +53,9 @@ describe("editor agent undo", () => {
         tool_calls: [
           {
             id: "call_1",
-            name: "replace_range",
+            name: "replace_line",
             arguments: JSON.stringify({
-              start_line: 1,
-              end_line: 1,
+              line: 1,
               text: "updated",
             }),
           },

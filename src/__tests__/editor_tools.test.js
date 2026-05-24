@@ -8,6 +8,8 @@ import {
   getDocumentSnapshot,
   gotoLine,
   insertText,
+  replaceLine,
+  replaceSpan,
   replaceRange,
   deleteRange,
   executeTool,
@@ -52,8 +54,40 @@ describe("editor_tools.insertText", () => {
   });
 });
 
+describe("editor_tools.replaceLine", () => {
+  it("replaces a single line", () => {
+    const result = replaceLine("one\ntwo\nthree", 2, "TWO");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe("one\nTWO\nthree");
+      expect(result.line).toBe(2);
+      expect(result.end_line).toBe(2);
+    }
+  });
+
+  it("expands one line into multiple lines when text contains newlines", () => {
+    const result = replaceLine("a\nb\nc", 2, "x\ny\nz");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe("a\nx\ny\nz\nc");
+      expect(result.end_line).toBe(4);
+    }
+  });
+});
+
+describe("editor_tools.replaceSpan", () => {
+  it("replaces an inclusive column span within a line", () => {
+    const line = '"items1":["car", "bike", "motorcycle", "van", "train"],';
+    const result = replaceSpan(line, 1, 27, 36, "apple");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe('"items1":["car", "bike", "apple", "van", "train"],');
+    }
+  });
+});
+
 describe("editor_tools.replaceRange", () => {
-  it("replaces inclusive line range", () => {
+  it("replaces inclusive line range (legacy multi-line)", () => {
     const result = replaceRange("one\ntwo\nthree", 2, 2, "TWO");
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -90,13 +124,32 @@ describe("editor_tools.executeTool", () => {
     expect(result.content).toBe("1| x\n2| y");
   });
 
-  it("mutates via replace_range", () => {
+  it("mutates via replace_line", () => {
+    const result = executeTool(
+      "replace_line",
+      { line: 1, text: "done" },
+      { text: "todo" }
+    );
+    expect(result.new_text).toBe("done");
+  });
+
+  it("mutates via replace_span", () => {
+    const result = executeTool(
+      "replace_span",
+      { line: 1, start_column: 2, end_column: 4, text: "ip" },
+      { text: "hello" }
+    );
+    expect(result.new_text).toBe("hipo");
+  });
+
+  it("maps legacy replace_range single-line calls to replace_line", () => {
     const result = executeTool(
       "replace_range",
       { start_line: 1, end_line: 1, text: "done" },
       { text: "todo" }
     );
     expect(result.new_text).toBe("done");
+    expect(result.line).toBe(1);
   });
 });
 

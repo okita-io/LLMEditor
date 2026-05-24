@@ -49,18 +49,52 @@ function normalizeToolObject(obj) {
     typeof obj.end_line !== "undefined" &&
     typeof obj.text === "string"
   ) {
+    const startLine = obj.start_line;
+    const endLine = obj.end_line;
+    if (startLine === endLine) {
+      return {
+        name: "replace_line",
+        args: {
+          line: startLine,
+          text: obj.text,
+        },
+        source: "replace_line-shape",
+      };
+    }
     return {
       name: "replace_range",
       args: {
-        start_line: obj.start_line,
-        end_line: obj.end_line,
+        start_line: startLine,
+        end_line: endLine,
         text: obj.text,
       },
       source: "replace_range-shape",
     };
   }
 
-  if (typeof obj.line !== "undefined" && typeof obj.text === "string") {
+  if (
+    typeof obj.line !== "undefined" &&
+    typeof obj.start_column !== "undefined" &&
+    typeof obj.end_column !== "undefined" &&
+    typeof obj.text === "string"
+  ) {
+    return {
+      name: "replace_span",
+      args: {
+        line: obj.line,
+        start_column: obj.start_column,
+        end_column: obj.end_column,
+        text: obj.text,
+      },
+      source: "replace_span-shape",
+    };
+  }
+
+  if (
+    typeof obj.line !== "undefined" &&
+    typeof obj.text === "string" &&
+    typeof obj.column !== "undefined"
+  ) {
     return {
       name: "insert_text",
       args: {
@@ -69,6 +103,22 @@ function normalizeToolObject(obj) {
         text: obj.text,
       },
       source: "insert_text-shape",
+    };
+  }
+
+  if (
+    typeof obj.line !== "undefined" &&
+    typeof obj.text === "string" &&
+    typeof obj.column === "undefined" &&
+    typeof obj.start_column === "undefined"
+  ) {
+    return {
+      name: "replace_line",
+      args: {
+        line: obj.line,
+        text: obj.text,
+      },
+      source: "replace_line-shape",
     };
   }
 
@@ -176,10 +226,11 @@ export function extractDocumentEdits(text) {
 
   // Inline JSON objects mentioning tool names (single-line tool payloads).
   const inlineRes = [
-    /\{\s*"tool"\s*:\s*"(insert_text|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
-    /\{\s*"name"\s*:\s*"(insert_text|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
+    /\{\s*"tool"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
+    /\{\s*"name"\s*:\s*"(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)"[\s\S]*?\}/g,
     /\{\s*"line"\s*:\s*\d+[\s\S]*?\}/g,
     /\{\s*"start_line"\s*:\s*\d+[\s\S]*?\}/g,
+    /\{\s*"start_column"\s*:\s*\d+[\s\S]*?\}/g,
   ];
   for (const re of inlineRes) {
     re.lastIndex = 0;
@@ -199,7 +250,7 @@ export function extractDocumentEdits(text) {
 
   // Function-call style: insert_text({...})
   const callRe =
-    /\b(insert_text|replace_range|delete_range|goto_line)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
+    /\b(insert_text|replace_line|replace_span|replace_range|delete_range|goto_line)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
   callRe.lastIndex = 0;
   while ((match = callRe.exec(text)) !== null) {
     try {
@@ -215,7 +266,14 @@ export function extractDocumentEdits(text) {
   }
 
   return edits.filter((edit) =>
-    ["insert_text", "replace_range", "delete_range", "goto_line"].includes(edit.name)
+    [
+      "insert_text",
+      "replace_line",
+      "replace_span",
+      "replace_range",
+      "delete_range",
+      "goto_line",
+    ].includes(edit.name)
   );
 }
 
@@ -225,7 +283,11 @@ export function extractDocumentEdits(text) {
  */
 export function assistantTextLooksLikeUnappliedEdits(text) {
   return extractDocumentEdits(text).some(
-    (edit) => edit.name === "insert_text" || edit.name === "replace_range"
+    (edit) =>
+      edit.name === "insert_text" ||
+      edit.name === "replace_line" ||
+      edit.name === "replace_span" ||
+      edit.name === "replace_range"
   );
 }
 

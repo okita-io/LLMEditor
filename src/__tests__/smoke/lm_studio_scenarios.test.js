@@ -13,7 +13,7 @@
 //   LLM_TEMPERATURE          Temperature (default: 0.1)
 //   LLM_MAX_TOKENS           Max tokens (default: 2048)
 //   LLM_SMOKE_TIMEOUT_MS     Per-test timeout (default: 120000)
-//   LLM_SMOKE_CATEGORY       Run only a specific category (replace_range, insert_text, etc.)
+//   LLM_SMOKE_CATEGORY       Run only a specific category (replace_line, replace_span, insert_text, etc.)
 //   LLM_SMOKE_RETRIES        Max retries per scenario (default: 1)
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
