@@ -59,6 +59,7 @@
 import * as api from "./api.js";
 import { runAgent } from "./agent.js";
 import { buildContextWindow } from "./context_window.js";
+import * as editorTools from "./editor_tools.js";
 
 let bufferEl = null;
 let currentPath = null;
@@ -67,6 +68,10 @@ let hadBom = false;
 let lineEnding = "none";
 let streamActive = false;
 let agentActive = false;
+/** @type {null | { source: string, beforeSelection: object, afterSelection: object, changes: Array<object>, lastAppendedAt: number }} */
+let agentEditGroup = null;
+/** @type {string} */
+let agentEditBuffer = "";
 /** @type {null | {
  *   mode: "insert_at_cursor" | "replace_selection" | "replace_document",
  *   startCursor: number,
@@ -231,6 +236,9 @@ export function initialize() {
   lineEnding = "none";
   streamActive = false;
   streamAnchor = null;
+  agentActive = false;
+  agentEditGroup = null;
+  agentEditBuffer = "";
   // Per Req 18.1, both stacks start empty at launch. `initialize` is
   // also called when the WebView reloads (e.g. devtools refresh), so
   // resetting the stacks here matches the user's mental model of "a
@@ -871,6 +879,7 @@ async function _sendAgentPrompt(text) {
   }
 
   agentActive = true;
+  _beginAgentEdit();
   _emitChatStart(text);
   _emitStatus("Thinking…");
 
@@ -902,15 +911,87 @@ async function _sendAgentPrompt(text) {
         onAssistantMessage: (message) => {
           _emitChatAssistant(message);
         },
+        applyMutatingResult: (el, name, result) => {
+          _applyAgentToolResult(el, name, result);
+        },
       },
     });
     _emitStatus("");
   } catch (err) {
     _emitStatus(_errorMessage(err));
   } finally {
+    _completeAgentEdit();
     agentActive = false;
     _emitChatComplete();
   }
+}
+
+/**
+ * Begin a single undo group for an agent chat session.
+ *
+ * @returns {void}
+ */
+function _beginAgentEdit() {
+  if (!bufferEl) return;
+  agentEditBuffer = bufferEl.value;
+  agentEditGroup = {
+    source: "agent",
+    beforeSelection: _captureSelection(),
+    afterSelection: _captureSelection(),
+    changes: [],
+    lastAppendedAt: Date.now(),
+  };
+}
+
+/**
+ * Apply a tool result and record buffer mutations on the agent undo group.
+ *
+ * @param {HTMLTextAreaElement} el
+ * @param {string} name
+ * @param {Record<string, unknown>} result
+ * @returns {void}
+ */
+function _applyAgentToolResult(el, name, result) {
+  if (!el || !agentEditGroup) {
+    editorTools.applyToolSideEffects(el, name, result);
+    return;
+  }
+  if (name === "goto_line") {
+    editorTools.applyGotoLine(el, result);
+    return;
+  }
+  if (!result || result.ok !== true || typeof result.new_text !== "string") {
+    return;
+  }
+  const oldText = agentEditBuffer;
+  const newText = result.new_text;
+  if (oldText !== newText) {
+    agentEditGroup.changes.push({
+      at: 0,
+      deleted: oldText,
+      inserted: newText,
+    });
+    agentEditBuffer = newText;
+  }
+  el.value = newText;
+  el.dispatchEvent(new Event("input"));
+}
+
+/**
+ * Commit the agent undo group when tool edits were applied.
+ *
+ * @returns {void}
+ */
+function _completeAgentEdit() {
+  if (!agentEditGroup || agentEditGroup.changes.length === 0) {
+    agentEditGroup = null;
+    agentEditBuffer = "";
+    return;
+  }
+  agentEditGroup.afterSelection = _captureSelection();
+  pushUndo(agentEditGroup);
+  agentEditGroup = null;
+  agentEditBuffer = "";
 }
 
 /**
@@ -1215,7 +1296,7 @@ function _errorMessage(err) {
  * @returns {void}
  */
 export function undo() {
-  if (streamActive) return; // Req 18.21
+  if (streamActive || agentActive) return;
   if (!bufferEl) return;
   const group = undoStack.pop();
   if (group === undefined) return; // Req 18.12
@@ -1251,7 +1332,7 @@ export function undo() {
  * @returns {void}
  */
 export function redo() {
-  if (streamActive) return; // Req 18.21
+  if (streamActive || agentActive) return;
   if (!bufferEl) return;
   const group = redoStack.pop();
   if (group === undefined) return; // Req 18.14

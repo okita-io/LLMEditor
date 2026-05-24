@@ -6,7 +6,8 @@
   "description": "LLIMEdit frontend test harness (Vitest + fast-check + jsdom).",
   "type": "module",
   "scripts": {
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "test:smoke": "LLM_SMOKE=1 vitest --run --config vitest.smoke.config.js"
   },
   "devDependencies": {
     "@vitest/ui": "^2.1.9",

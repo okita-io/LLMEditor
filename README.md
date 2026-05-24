@@ -232,9 +232,26 @@ This launches the app with hot-reload for the frontend (`src/`) and recompiles t
 # Backend (Rust) — 127 tests
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# Frontend (Vitest + jsdom) — 242 tests
+# Frontend (Vitest + jsdom) — unit tests
 npm test
+
+# Live LM Studio smoke tests (requires a running server + tool-capable model)
+LLM_SMOKE=1 LLM_API_URL=http://10.0.1.5:1234/v1/chat/completions npm run test:smoke
 ```
+
+Smoke tests exercise the real agent loop against LM Studio: tool calls (`replace_range`, `insert_text`, `delete_range`), the selection-centered context window on large files, and **Undo** after agent edits. They are skipped by default; set `LLM_SMOKE=1` to enable.
+
+Optional env vars:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LLM_API_URL` | `http://10.0.1.5:1234/v1/chat/completions` | LM Studio chat endpoint |
+| `LLM_MODEL` | first loaded model | Model id override |
+| `LLM_TEMPERATURE` | `0.1` | Lower = more deterministic smoke runs |
+| `LLM_MAX_TOKENS` | `2048` | Max tokens per turn |
+| `LLM_SMOKE_TIMEOUT_MS` | `120000` | Per-test timeout |
+
+Use a model with native tool use (e.g. Qwen2.5-Instruct, Llama 3.1+).
 
 ### Build for release
 
