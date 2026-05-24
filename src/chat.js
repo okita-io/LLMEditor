@@ -4,7 +4,7 @@
 // AI chat panel — conversation UI separate from the document buffer.
 
 import * as editor from "./editor.js";
-import { clearHistory } from "./chat_history.js";
+import { clearHistory, getHistoryForAgent } from "./chat_history.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
 let messagesEl = null;
@@ -13,11 +13,39 @@ let sendBtn = null;
 let clearBtn = null;
 let modelEl = null;
 /** @type {HTMLElement | null} */
+let tokenCountEl = null;
+/** @type {HTMLElement | null} */
 let activeAssistantBubble = null;
 /** @type {HTMLElement | null} */
 let activeAssistantBody = null;
 /** @type {HTMLElement | null} */
 let pendingUserBubble = null;
+
+/**
+ * Estimate the number of tokens in the chat history context.
+ * Uses a rough approximation of ~4 characters per token.
+ *
+ * @returns {number}
+ */
+function estimateContextTokens() {
+  const history = getHistoryForAgent();
+  let totalChars = 0;
+  for (const turn of history) {
+    totalChars += turn.content.length;
+  }
+  return Math.round(totalChars / 4);
+}
+
+/**
+ * Update the token count display element.
+ *
+ * @returns {void}
+ */
+function updateTokenCount() {
+  if (!tokenCountEl) return;
+  const tokens = estimateContextTokens();
+  tokenCountEl.textContent = `${tokens.toLocaleString()} tokens`;
+}
 
 /**
  * @returns {void}
@@ -178,6 +206,7 @@ export function clearMessages() {
   activeAssistantBubble = null;
   pendingUserBubble = null;
   clearHistory();
+  updateTokenCount();
 }
 
 /**
@@ -361,6 +390,7 @@ export function initializeChat() {
   sendBtn = document.getElementById("chat-send");
   clearBtn = document.getElementById("chat-clear");
   modelEl = document.getElementById("chat-model");
+  tokenCountEl = document.getElementById("chat-token-count");
 
   if (sendBtn && !sendBtn.dataset.chatBound) {
     sendBtn.dataset.chatBound = "1";
@@ -490,6 +520,7 @@ export function initializeChat() {
             ? detail.error
             : "Request failed";
         markPendingUserBubbleFailed(error);
+        updateTokenCount();
         return;
       }
 
@@ -497,6 +528,7 @@ export function initializeChat() {
         clearUserBubbleFailure(pendingUserBubble);
       }
       pendingUserBubble = null;
+      updateTokenCount();
     });
   }
 }

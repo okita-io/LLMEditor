@@ -396,8 +396,19 @@ body {
 
 .chat-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
+}
+
+.chat-token-count {
+  flex: 1;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 4px;
+  white-space: nowrap;
 }
 
 .chat-actions button {
