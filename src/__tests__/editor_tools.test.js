@@ -10,6 +10,9 @@ import {
   insertText,
   replaceLine,
   replaceSpan,
+  resolveSpanColumns,
+  lineColumnToIndex,
+  applyLineColumnSpan,
   replaceRange,
   deleteLines,
   deleteSpan,
@@ -77,6 +80,25 @@ describe("editor_tools.replaceLine", () => {
   });
 });
 
+describe("editor_tools.resolveSpanColumns", () => {
+  it("extends end column past end-of-line to the line end", () => {
+    const span = resolveSpanColumns("car", 1, 5);
+    expect(span.startIdx).toBe(0);
+    expect(span.endIdx).toBe(3);
+    expect(span.end_column).toBe(5);
+    expect(span.effective_end_column).toBe(3);
+  });
+
+  it("replaces quoted token when span matches its width", () => {
+    const result = replaceSpan('"car", "bike"', 1, 1, 5, '"train"');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe('"train", "bike"');
+      expect(result.end_column).toBe(5);
+    }
+  });
+});
+
 describe("editor_tools.replaceSpan", () => {
   it("replaces an inclusive column span within a line", () => {
     const line = '"items1":["car", "bike", "motorcycle", "van", "train"],';
@@ -85,6 +107,22 @@ describe("editor_tools.replaceSpan", () => {
     if (result.ok) {
       expect(result.text).toBe('"items1":["car", "bike", "apple", "van", "train"],');
     }
+  });
+});
+
+describe("editor_tools.lineColumnToIndex", () => {
+  it("maps columns past end-of-line to the line end", () => {
+    expect(lineColumnToIndex("abc", 1, 99)).toBe(3);
+  });
+});
+
+describe("editor_tools.applyLineColumnSpan", () => {
+  it("selects through end-of-line when end column is past the line", () => {
+    const el = document.createElement("textarea");
+    el.value = "car";
+    applyLineColumnSpan(el, 1, 1, 5);
+    expect(el.selectionStart).toBe(0);
+    expect(el.selectionEnd).toBe(3);
   });
 });
 
@@ -166,6 +204,17 @@ describe("editor_tools.executeTool", () => {
       { text: "hello" }
     );
     expect(result.new_text).toBe("hipo");
+  });
+
+  it("reports effective columns when end column extends past end-of-line", () => {
+    const result = executeTool(
+      "replace_span",
+      { line: 1, start_column: 1, end_column: 5, text: "train" },
+      { text: "car" }
+    );
+    expect(result.new_text).toBe("train");
+    expect(result.end_column).toBe(5);
+    expect(result.effective_end_column).toBe(3);
   });
 
   it("mutates via delete_lines", () => {

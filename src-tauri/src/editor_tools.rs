@@ -75,7 +75,7 @@ pub fn tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "replace_span",
-                "description": "Replace a character span within a single line. Use this to change part of a line without rewriting the whole line. Columns are 1-based and inclusive.",
+                "description": "Replace a character span within a single line. Use this to change part of a line without rewriting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -109,7 +109,7 @@ pub fn tool_definitions() -> Value {
             "type": "function",
             "function": {
                 "name": "delete_span",
-                "description": "Delete a character span within a single line. Use this to remove part of a line without deleting the whole line. Columns are 1-based and inclusive.",
+                "description": "Delete a character span within a single line. Use this to remove part of a line without deleting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
                 "parameters": {
                     "type": "object",
                     "properties": {

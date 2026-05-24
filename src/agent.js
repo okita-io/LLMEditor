@@ -25,7 +25,7 @@ Use the provided tools to inspect and modify the document. Line numbers are 1-ba
 Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
-Use replace_line to rewrite an entire line, replace_span to change part of a line, insert_text for insertions, delete_lines to remove whole lines, delete_span to remove part of a line (1-based inclusive columns), and goto_line to inspect a specific line.
+Use replace_line to rewrite an entire line, replace_span to change part of a line, insert_text for insertions, delete_lines to remove whole lines, delete_span to remove part of a line (1-based inclusive columns; columns past end-of-line extend to the line end), and goto_line to inspect a specific line.
 You MUST apply every document change with tools before your final reply. Do not paste JSON patches, outline snippets, or replacement text in chat as a substitute for tool calls — the chat panel is not the document.
 After tools succeed, summarize briefly in plain language only. If you proposed new sections (e.g. build-up, threshold), insert them with insert_text or replace_line.`;
 

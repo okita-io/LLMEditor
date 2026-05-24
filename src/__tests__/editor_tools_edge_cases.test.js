@@ -156,10 +156,12 @@ describe("replaceSpan edge cases", () => {
     expect(result.text).toBe("aXf");
   });
 
-  it("clamps columns beyond line length", () => {
+  it("extends end column past end-of-line to the line end", () => {
     const result = replaceSpan("short", 1, 3, 999, "!");
     expect(result.ok).toBe(true);
     expect(result.text).toBe("sh!");
+    expect(result.end_column).toBe(999);
+    expect(result.effective_end_column).toBe(5);
   });
 });
 

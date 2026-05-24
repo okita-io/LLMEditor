@@ -104,13 +104,67 @@ export function insertText(text, line, column, insertText) {
 
 /**
  * @param {number} column 1-based
- * @param {number} lineLength
  * @returns {number}
  */
-function clampColumn(column, lineLength) {
-  const max = Math.max(1, lineLength + 1);
+function normalizeColumn(column) {
   const n = Number.isFinite(column) ? Math.trunc(column) : 1;
-  return Math.min(Math.max(1, n), max);
+  return Math.max(1, n);
+}
+
+/**
+ * Resolve a 1-based inclusive column span on a single line.
+ * Columns beyond the line end behave like a text editor: they extend to end-of-line.
+ *
+ * @param {string} lineText
+ * @param {number} startColumn 1-based inclusive
+ * @param {number} endColumn 1-based inclusive
+ * @returns {{
+ *   start_column: number,
+ *   end_column: number,
+ *   effective_start_column: number,
+ *   effective_end_column: number,
+ *   startIdx: number,
+ *   endIdx: number,
+ * }}
+ */
+export function resolveSpanColumns(lineText, startColumn, endColumn) {
+  const current = typeof lineText === "string" ? lineText : "";
+  const length = current.length;
+  let startCol = normalizeColumn(startColumn);
+  let endCol = normalizeColumn(endColumn);
+  if (startCol > endCol) [startCol, endCol] = [endCol, startCol];
+
+  const startIdx = Math.min(startCol - 1, length);
+  const endIdx = Math.min(endCol, length);
+  const effectiveStartColumn = length === 0 ? 1 : Math.min(startCol, length + 1);
+  const effectiveEndColumn = length === 0 ? 1 : Math.min(endCol, length);
+
+  return {
+    start_column: startCol,
+    end_column: endCol,
+    effective_start_column: effectiveStartColumn,
+    effective_end_column: effectiveEndColumn,
+    startIdx,
+    endIdx,
+  };
+}
+
+/**
+ * @param {string} text
+ * @param {number} line 1-based
+ * @param {number} column 1-based; values past the line end map to end-of-line
+ * @returns {number}
+ */
+export function lineColumnToIndex(text, line, column) {
+  const lines = splitLines(typeof text === "string" ? text : "");
+  const ln = clampLine(line, lines.length);
+  let offset = 0;
+  for (let i = 0; i < ln - 1; i += 1) {
+    offset += lines[i].length + 1;
+  }
+  const lineText = lines[ln - 1] ?? "";
+  const col = normalizeColumn(column);
+  return offset + Math.min(col - 1, lineText.length);
 }
 
 /**
@@ -144,19 +198,17 @@ export function replaceSpan(text, line, startColumn, endColumn, replacement) {
   const lines = splitLines(text);
   const ln = clampLine(line, lines.length);
   const current = lines[ln - 1] ?? "";
-  let startCol = clampColumn(startColumn, current.length);
-  let endCol = clampColumn(endColumn, current.length);
-  if (startCol > endCol) [startCol, endCol] = [endCol, startCol];
-  const startIdx = Math.min(startCol - 1, current.length);
-  const endIdx = Math.min(endCol, current.length);
+  const span = resolveSpanColumns(current, startColumn, endColumn);
   const insert = typeof replacement === "string" ? replacement : "";
-  lines[ln - 1] = current.slice(0, startIdx) + insert + current.slice(endIdx);
+  lines[ln - 1] = current.slice(0, span.startIdx) + insert + current.slice(span.endIdx);
   return {
     ok: true,
     text: joinLines(lines),
     line: ln,
-    start_column: startCol,
-    end_column: endCol,
+    start_column: span.start_column,
+    end_column: span.end_column,
+    effective_start_column: span.effective_start_column,
+    effective_end_column: span.effective_end_column,
   };
 }
 
@@ -305,6 +357,8 @@ export function executeTool(name, args, ctx) {
         line: result.line,
         start_column: result.start_column,
         end_column: result.end_column,
+        effective_start_column: result.effective_start_column,
+        effective_end_column: result.effective_end_column,
         new_text: result.text,
       });
     }
@@ -353,6 +407,8 @@ export function executeTool(name, args, ctx) {
         line: result.line,
         start_column: result.start_column,
         end_column: result.end_column,
+        effective_start_column: result.effective_start_column,
+        effective_end_column: result.effective_end_column,
         new_text: result.text,
       });
     }
@@ -404,14 +460,34 @@ export function applyGotoLine(bufferEl, result) {
   if (!bufferEl || !result || result.ok !== true) return false;
   const line = Number(result.line);
   if (!Number.isFinite(line)) return false;
+  bufferEl.focus();
+  bufferEl.setSelectionRange(lineColumnToIndex(bufferEl.value, line, 1), lineColumnToIndex(bufferEl.value, line, 1));
+  bufferEl.dispatchEvent(new Event("select"));
+  return true;
+}
+
+/**
+ * Select a 1-based column span on a line. Columns past end-of-line extend to the line end.
+ *
+ * @param {HTMLTextAreaElement} bufferEl
+ * @param {number} line 1-based
+ * @param {number} startColumn 1-based inclusive
+ * @param {number} endColumn 1-based inclusive
+ * @returns {boolean}
+ */
+export function applyLineColumnSpan(bufferEl, line, startColumn, endColumn) {
+  if (!bufferEl) return false;
   const lines = splitLines(bufferEl.value);
   const ln = clampLine(line, lines.length);
+  const span = resolveSpanColumns(lines[ln - 1] ?? "", startColumn, endColumn);
   let offset = 0;
   for (let i = 0; i < ln - 1; i += 1) {
     offset += lines[i].length + 1;
   }
+  const start = offset + span.startIdx;
+  const end = offset + span.endIdx;
   bufferEl.focus();
-  bufferEl.setSelectionRange(offset, offset);
+  bufferEl.setSelectionRange(start, end);
   bufferEl.dispatchEvent(new Event("select"));
   return true;
 }
@@ -435,4 +511,6 @@ export const _internal = {
   splitLines,
   joinLines,
   clampLine,
+  resolveSpanColumns,
+  normalizeColumn,
 };

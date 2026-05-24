@@ -1051,8 +1051,22 @@ function _applyAgentToolResult(el, name, result) {
  * @returns {void}
  */
 function _scrollToToolResult(el, name, result) {
+  if (name === "replace_span" || name === "delete_span") {
+    const line = Number(result.line);
+    const startColumn = Number(result.start_column);
+    const endColumn = Number(result.end_column);
+    if (
+      Number.isFinite(line) &&
+      Number.isFinite(startColumn) &&
+      Number.isFinite(endColumn)
+    ) {
+      editorTools.applyLineColumnSpan(el, line, startColumn, endColumn);
+      return;
+    }
+  }
+
   const line =
-    name === "replace_line" || name === "replace_span" || name === "delete_span"
+    name === "replace_line"
       ? Number(result.line)
       : name === "replace_range" || name === "delete_lines" || name === "delete_range"
         ? Number(result.start_line)
