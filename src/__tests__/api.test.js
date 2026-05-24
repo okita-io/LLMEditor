@@ -135,6 +135,26 @@ describe("api.streamLlm", () => {
   });
 });
 
+describe("api.agentTurn", () => {
+  it("invokes agent_turn with messages and settings", async () => {
+    const response = {
+      content: "ok",
+      tool_calls: [],
+      finish_reason: "stop",
+    };
+    const calls = installInvokeStub(() => Promise.resolve(response));
+    const messages = [{ role: "user", content: "hello" }];
+    const settings = { model: "local-model" };
+
+    const result = await api.agentTurn(messages, settings);
+
+    expect(result).toBe(response);
+    expect(calls).toEqual([
+      { cmd: "agent_turn", args: { messages, settings } },
+    ]);
+  });
+});
+
 describe("api.cancelStream", () => {
   it("invokes cancel_stream with no arguments", async () => {
     const calls = installInvokeStub(() => Promise.resolve());

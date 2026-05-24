@@ -12,6 +12,7 @@
 // glue.
 
 pub mod commands;
+pub mod editor_tools;
 pub mod error;
 pub mod events;
 pub mod file_service;
@@ -107,6 +108,7 @@ pub fn run() {
             crate::commands::open_file,
             crate::commands::save_file,
             crate::commands::call_llm,
+            crate::commands::agent_turn,
             crate::commands::stream_llm,
             crate::commands::cancel_stream,
             crate::commands::load_settings,

@@ -283,6 +283,27 @@ pub async fn call_llm(text: String, settings: Settings) -> Result<String, String
 }
 
 // -----------------------------------------------------------------------------
+// agent_turn (tool use, non-streaming agent loop)
+// -----------------------------------------------------------------------------
+
+/// Run one non-streaming chat turn with editor tool definitions attached.
+///
+/// The frontend owns the multi-turn agent loop: it sends the full
+/// `messages` array (system, user, assistant tool_calls, tool results),
+/// receives `AgentTurnResponse`, executes any requested tools locally,
+/// appends tool results, and calls this command again until the model
+/// stops requesting tools.
+#[tauri::command]
+pub async fn agent_turn(
+    messages: Vec<serde_json::Value>,
+    settings: Settings,
+) -> Result<llm_client::AgentTurnResponse, String> {
+    llm_client::agent_turn(messages, &settings)
+        .await
+        .map_err(<LlmError as Into<String>>::into)
+}
+
+// -----------------------------------------------------------------------------
 // stream_llm (Req 15.4, 15.8, 13.1, 13.5, 13.7, 13.8, 14.1–14.7)
 // -----------------------------------------------------------------------------
 

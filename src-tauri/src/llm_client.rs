@@ -192,6 +192,109 @@ fn extract_first_choice_content(envelope: &Value) -> Option<String> {
     Some(content.to_string())
 }
 
+// -----------------------------------------------------------------------------
+// Agent turn (tool use, non-streaming)
+// -----------------------------------------------------------------------------
+
+use serde::{Deserialize, Serialize};
+
+/// One function call requested by the model.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolCallOut {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// Non-streaming chat completion result for the frontend agent loop.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentTurnResponse {
+    pub content: Option<String>,
+    pub tool_calls: Vec<ToolCallOut>,
+    pub finish_reason: Option<String>,
+}
+
+/// Build a chat-completions body with `tools` for the agent loop.
+pub fn build_agent_body(messages: &[Value], s: &Settings) -> Value {
+    json!({
+        "model": s.model,
+        "messages": messages,
+        "temperature": s.temperature,
+        "max_tokens": s.max_tokens,
+        "stream": false,
+        "tools": crate::editor_tools::tool_definitions(),
+    })
+}
+
+/// Parse `choices[0].message` for assistant text and/or tool calls.
+pub fn extract_agent_turn_response(envelope: &Value) -> Option<AgentTurnResponse> {
+    let choice = envelope.get("choices")?.as_array()?.first()?;
+    let message = choice.get("message")?;
+    let content = match message.get("content") {
+        Some(Value::Null) | None => None,
+        Some(Value::String(s)) if s.is_empty() => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        _ => None,
+    };
+    let finish_reason = choice
+        .get("finish_reason")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let tool_calls = message
+        .get("tool_calls")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|tc| {
+                    let id = tc.get("id")?.as_str()?.to_string();
+                    let function = tc.get("function")?;
+                    let name = function.get("name")?.as_str()?.to_string();
+                    let arguments = function.get("arguments")?.as_str()?.to_string();
+                    Some(ToolCallOut {
+                        id,
+                        name,
+                        arguments,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(AgentTurnResponse {
+        content,
+        tool_calls,
+        finish_reason,
+    })
+}
+
+/// POST a non-streaming tool-enabled chat turn to LM Studio.
+pub async fn agent_turn(
+    messages: Vec<Value>,
+    settings: &Settings,
+) -> Result<AgentTurnResponse, LlmError> {
+    let body = build_agent_body(&messages, settings);
+
+    let response = http_client()
+        .post(&settings.api_url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(map_request_error)?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(LlmError::HttpStatus(status.as_u16()));
+    }
+
+    let envelope: Value = response
+        .json::<Value>()
+        .await
+        .map_err(classify_body_error)?;
+
+    extract_agent_turn_response(&envelope).ok_or(LlmError::InvalidResponse)
+}
+
 /// Map a `reqwest::Error` from `send()` onto an `LlmError`.
 ///
 /// `send()` covers the full request lifecycle through the response
@@ -1116,6 +1219,61 @@ mod tests {
             "choices": [ { "message": { "content": 42 } } ]
         });
         assert!(extract_first_choice_content(&env).is_none());
+    }
+
+    // ---- build_agent_body / extract_agent_turn_response -------------------
+
+    #[test]
+    fn build_agent_body_includes_tools_and_messages() {
+        let s = settings_with_prompt("");
+        let messages = vec![json!({"role": "user", "content": "edit line 1"})];
+        let body = build_agent_body(&messages, &s);
+        assert_eq!(body["stream"], false);
+        assert!(body.get("tools").and_then(|v| v.as_array()).is_some());
+        assert_eq!(body["messages"], json!(messages));
+    }
+
+    #[test]
+    fn extract_agent_turn_parses_content_and_tool_calls() {
+        let env = json!({
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "replace_range",
+                            "arguments": "{\"start_line\":1,\"end_line\":1,\"text\":\"hi\"}"
+                        }
+                    }]
+                }
+            }]
+        });
+        let parsed = extract_agent_turn_response(&env).expect("parsed");
+        assert!(parsed.content.is_none());
+        assert_eq!(parsed.finish_reason.as_deref(), Some("tool_calls"));
+        assert_eq!(parsed.tool_calls.len(), 1);
+        assert_eq!(parsed.tool_calls[0].name, "replace_range");
+        assert_eq!(parsed.tool_calls[0].id, "call_1");
+    }
+
+    #[test]
+    fn extract_agent_turn_parses_assistant_text() {
+        let env = json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Done editing."
+                }
+            }]
+        });
+        let parsed = extract_agent_turn_response(&env).expect("parsed");
+        assert_eq!(parsed.content.as_deref(), Some("Done editing."));
+        assert!(parsed.tool_calls.is_empty());
     }
 
     // ---- http_client ------------------------------------------------------

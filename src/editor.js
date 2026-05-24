@@ -57,6 +57,8 @@
 //                 18.6, 18.15, 18.16, 18.17, 18.18, 18.19, 18.20.
 
 import * as api from "./api.js";
+import { runAgent } from "./agent.js";
+import { buildContextWindow } from "./context_window.js";
 
 let bufferEl = null;
 let currentPath = null;
@@ -64,6 +66,7 @@ let savedSnapshot = "";
 let hadBom = false;
 let lineEnding = "none";
 let streamActive = false;
+let agentActive = false;
 /** @type {null | {
  *   mode: "insert_at_cursor" | "replace_selection" | "replace_document",
  *   startCursor: number,
@@ -558,6 +561,7 @@ function _suggestedExtension(path) {
  */
 function _dialogFilters() {
   return [
+    { name: "JSON", extensions: ["json"] },
     { name: "Text", extensions: ["txt", "md", "yaml", "yml", "pencil"] },
     { name: "All files", extensions: ["*"] },
   ];
@@ -613,14 +617,17 @@ async function _invokeSaveDialog(suggestedExt) {
     _emitStatus("file dialog unavailable");
     return null;
   }
-  // Build a filter list with the suggested extension first so the
-  // dialog highlights it as the default. We strip the leading dot
-  // because Tauri's filter API expects bare extensions.
   const ext = suggestedExt.startsWith(".") ? suggestedExt.slice(1) : suggestedExt;
-  const filters = [
-    { name: "Text", extensions: [ext] },
-    { name: "All files", extensions: ["*"] },
-  ];
+  const filters = _dialogFilters();
+  // Prefer the filter matching the suggested extension when present.
+  const matchIdx = filters.findIndex(
+    (f) => f.extensions.length === 1 && f.extensions[0] === ext
+  );
+  if (matchIdx > 0) {
+    const preferred = filters[matchIdx];
+    filters.splice(matchIdx, 1);
+    filters.unshift(preferred);
+  }
   const result = await tauri.dialog.save({
     filters,
     defaultPath: typeof currentPath === "string" ? currentPath : undefined,
@@ -825,8 +832,9 @@ export async function sendToLLM() {
 }
 
 /**
- * Send a chat instruction to the model. Uses the provided prompt text
- * instead of the document buffer or selection.
+ * Send a chat instruction to the model using the tool-use agent loop.
+ * Document edits are applied via editor tools; assistant replies appear
+ * in the chat panel only.
  *
  * @param {string} text
  * @returns {Promise<void>}
@@ -834,7 +842,75 @@ export async function sendToLLM() {
 export async function sendChatMessage(text) {
   if (!bufferEl) return;
   const prompt = typeof text === "string" ? text.trim() : "";
-  await _sendPromptToLLM(prompt);
+  await _sendAgentPrompt(prompt);
+}
+
+/**
+ * Run the tool-use agent loop for a chat instruction.
+ *
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+async function _sendAgentPrompt(text) {
+  if (agentActive || streamActive) {
+    _emitStatus("A request is already in progress");
+    return;
+  }
+
+  let settings;
+  try {
+    settings = await api.loadSettings();
+  } catch (err) {
+    _emitStatus(_errorMessage(err));
+    return;
+  }
+
+  if (text.length === 0) {
+    _emitStatus("Nothing to send");
+    return;
+  }
+
+  agentActive = true;
+  _emitChatStart(text);
+  _emitStatus("Thinking…");
+
+  const selStart =
+    typeof bufferEl.selectionStart === "number" ? bufferEl.selectionStart : 0;
+  const selEnd =
+    typeof bufferEl.selectionEnd === "number" ? bufferEl.selectionEnd : selStart;
+  const contextAnchor = buildContextWindow(bufferEl.value, selStart, selEnd);
+
+  try {
+    await runAgent({
+      userMessage: text,
+      settings,
+      bufferEl,
+      contextAnchor,
+      documentPath: currentPath,
+      callbacks: {
+        getDocumentContext: () => ({
+          text: bufferEl.value,
+          path: currentPath,
+          contextAnchor,
+        }),
+        onToolCall: (toolCall) => {
+          _emitToolCall(toolCall);
+        },
+        onToolResult: (toolCall, result) => {
+          _emitToolResult(toolCall, result);
+        },
+        onAssistantMessage: (message) => {
+          _emitChatAssistant(message);
+        },
+      },
+    });
+    _emitStatus("");
+  } catch (err) {
+    _emitStatus(_errorMessage(err));
+  } finally {
+    agentActive = false;
+    _emitChatComplete();
+  }
 }
 
 /**
@@ -1034,6 +1110,58 @@ function _emitChatComplete() {
   }
   try {
     document.dispatchEvent(new CustomEvent("editor:chat-complete"));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ name: string, arguments: string }} toolCall
+ * @returns {void}
+ */
+function _emitToolCall(toolCall) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:tool-call", { detail: { toolCall } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ name: string, arguments: string }} toolCall
+ * @param {Record<string, unknown>} result
+ * @returns {void}
+ */
+function _emitToolResult(toolCall, result) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:tool-result", { detail: { toolCall, result } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {string} message
+ * @returns {void}
+ */
+function _emitChatAssistant(message) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-assistant", { detail: { message } })
+    );
   } catch {
     /* ignore */
   }

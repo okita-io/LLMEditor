@@ -119,6 +119,17 @@ export async function streamLlm(text, settings) {
 }
 
 /**
+ * Run one non-streaming agent turn with editor tools enabled.
+ *
+ * @param {Array<Record<string, unknown>>} messages Conversation history.
+ * @param {object} settings Current settings snapshot.
+ * @returns {Promise<{ content?: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason?: string|null }>}
+ */
+export async function agentTurn(messages, settings) {
+  return await getInvoke()("agent_turn", { messages, settings });
+}
+
+/**
  * Fire the active stream's cancellation token (Req 13.7). No-op when no
  * stream is active, so the frontend's Escape handler can call this
  * unconditionally. Resolves once the backend has signalled the token —

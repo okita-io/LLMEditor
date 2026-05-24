@@ -88,6 +88,58 @@ export function addUserMessage(text) {
 }
 
 /**
+ * @param {string} name
+ * @param {string} argsJson
+ * @returns {void}
+ */
+export function appendToolCall(name, argsJson) {
+  if (!messagesEl) return;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-tool";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = "Tool";
+  bubble.appendChild(label);
+
+  const body = document.createElement("div");
+  body.className = "chat-bubble-body chat-tool-body";
+  body.textContent = `${name}(${argsJson})`;
+  bubble.appendChild(body);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {string} name
+ * @param {Record<string, unknown>} result
+ * @returns {void}
+ */
+export function appendToolResult(name, result) {
+  if (!messagesEl) return;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-tool-result";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = "Result";
+  bubble.appendChild(label);
+
+  const body = document.createElement("div");
+  body.className = "chat-bubble-body chat-tool-body";
+  const summary =
+    result && result.ok === true
+      ? `${name} → ok`
+      : `${name} → ${JSON.stringify(result)}`;
+  body.textContent = summary;
+  bubble.appendChild(body);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+}
+
+/**
  * @param {string} [initialText]
  * @returns {HTMLElement | null}
  */
@@ -158,8 +210,44 @@ export function initializeChat() {
           ? detail.text
           : "";
       if (text.length > 0) addUserMessage(text);
-      beginAssistantMessage("");
+      activeAssistantBody = null;
       setStreamingUi(true);
+    });
+
+    document.addEventListener("editor:chat-assistant", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const message =
+        detail && typeof detail === "object" && typeof detail.message === "string"
+          ? detail.message
+          : "";
+      if (message.length === 0) return;
+      if (!activeAssistantBody) {
+        beginAssistantMessage(message);
+      } else {
+        activeAssistantBody.textContent = message;
+        scrollMessagesToBottom();
+      }
+    });
+
+    document.addEventListener("editor:tool-call", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const toolCall =
+        detail && typeof detail === "object" && detail.toolCall ? detail.toolCall : null;
+      if (!toolCall || typeof toolCall.name !== "string") return;
+      appendToolCall(toolCall.name, toolCall.arguments ?? "{}");
+    });
+
+    document.addEventListener("editor:tool-result", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const toolCall =
+        detail && typeof detail === "object" && detail.toolCall ? detail.toolCall : null;
+      const result =
+        detail && typeof detail === "object" && detail.result ? detail.result : null;
+      if (!toolCall || typeof toolCall.name !== "string") return;
+      appendToolResult(toolCall.name, result ?? {});
     });
 
     document.addEventListener("editor:chat-token", (event) => {

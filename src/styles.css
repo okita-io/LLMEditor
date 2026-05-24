@@ -261,6 +261,27 @@ body {
   font-size: 12px;
 }
 
+.chat-bubble-tool {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.chat-bubble-tool-result {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+}
+
+.chat-bubble-tool .chat-bubble-label,
+.chat-bubble-tool-result .chat-bubble-label {
+  color: var(--warning);
+}
+
+.chat-tool-body {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .chat-input-area {
   flex: 0 0 auto;
   padding: 12px;
