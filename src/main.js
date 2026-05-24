@@ -185,6 +185,45 @@ export function clearError() {
 }
 
 /**
+ * Update the window title to reflect the current file.
+ * Shows "LLIMEdit - Untitled" when no file is open, or
+ * "LLIMEdit - filename.ext" when a file is associated with the buffer.
+ *
+ * @returns {void}
+ */
+function updateWindowTitle() {
+  const filePath = editor.currentFilePath();
+  const fileName =
+    typeof filePath === "string" && filePath.length > 0
+      ? filePath.split(/[/\\]/).pop() || "Untitled"
+      : "Untitled";
+  const title = `LLIMEdit - ${fileName}`;
+
+  // Update the HTML document title (visible in browser tab / task bar).
+  if (typeof document !== "undefined") {
+    document.title = title;
+  }
+
+  // Update the native Tauri window title when running inside the shell.
+  const tauri = globalThis.__TAURI__;
+  if (tauri) {
+    const w =
+      (tauri.webviewWindow &&
+        typeof tauri.webviewWindow.getCurrentWebviewWindow === "function" &&
+        tauri.webviewWindow.getCurrentWebviewWindow()) ||
+      (tauri.window &&
+        typeof tauri.window.getCurrentWindow === "function" &&
+        tauri.window.getCurrentWindow()) ||
+      null;
+    if (w && typeof w.setTitle === "function") {
+      w.setTitle(title).catch(() => {
+        /* best-effort; ignore failures */
+      });
+    }
+  }
+}
+
+/**
  * Render the Status_Bar from `statusState` plus the live textarea
  * char-count. `attachToBuffer` runs the same render on every `input`
  * event; this function is the explicit re-render path for state
@@ -208,6 +247,7 @@ function renderStatus() {
     line: statusState.line,
     column: statusState.column,
   });
+  updateWindowTitle();
 }
 
 /**
