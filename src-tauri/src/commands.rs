@@ -475,6 +475,117 @@ pub async fn save_settings(
 }
 
 // -----------------------------------------------------------------------------
+// list_models — fetch available models from LM Studio
+// -----------------------------------------------------------------------------
+
+/// Fetch the list of loaded model IDs from an LM Studio (or compatible)
+/// server. Tries the OpenAI-compatible `/v1/models` endpoint first (which
+/// only returns loaded models), then falls back to `/api/v1/models`.
+///
+/// This command runs the HTTP request from the Rust backend using `reqwest`,
+/// bypassing any CORS restrictions that would block a direct `fetch()` from
+/// the Tauri webview.
+#[tauri::command]
+pub async fn list_models(api_url: String) -> Result<Vec<String>, String> {
+    list_models_impl(&api_url).await.map_err(|e| e.to_string())
+}
+
+/// Internal implementation for `list_models`.
+async fn list_models_impl(api_url: &str) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+    let trimmed = api_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("API URL is required".into());
+    }
+
+    // Derive the base URL by stripping known suffixes.
+    let base = if trimmed.ends_with("/api/v1/chat/completions") {
+        &trimmed[..trimmed.len() - "/api/v1/chat/completions".len()]
+    } else if trimmed.ends_with("/v1/chat/completions") {
+        &trimmed[..trimmed.len() - "/v1/chat/completions".len()]
+    } else if trimmed.ends_with("/api/v1") {
+        &trimmed[..trimmed.len() - "/api/v1".len()]
+    } else if trimmed.ends_with("/v1") {
+        &trimmed[..trimmed.len() - "/v1".len()]
+    } else {
+        trimmed
+    };
+
+    let legacy_url = format!("{base}/v1/models");
+    let primary_url = format!("{base}/api/v1/models");
+    let client = crate::llm_client::http_client_ref();
+    let timeout = std::time::Duration::from_secs(10);
+
+    // Prefer /v1/models (only loaded models) over /api/v1/models (all downloaded).
+    if legacy_url != primary_url {
+        if let Ok(ids) = fetch_and_parse_models(client, &legacy_url, timeout).await {
+            if !ids.is_empty() {
+                return Ok(ids);
+            }
+        }
+    }
+
+    let ids = fetch_and_parse_models(client, &primary_url, timeout).await?;
+    if ids.is_empty() {
+        return Err("server returned no models (load a model in LM Studio first)".into());
+    }
+    Ok(ids)
+}
+
+/// Fetch models from a URL and parse the response.
+async fn fetch_and_parse_models(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: std::time::Duration,
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+    let res = client
+        .get(url)
+        .timeout(timeout)
+        .header("Accept", "application/json")
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        return Err(format!("models request failed: HTTP {}", res.status().as_u16()).into());
+    }
+
+    let body: serde_json::Value = res.json().await?;
+
+    // Support both OpenAI-compatible format ({ data: [...] }) and
+    // LM Studio's native REST format ({ models: [...] }).
+    let entries = if let Some(arr) = body.get("data").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else if let Some(arr) = body.get("models").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else {
+        return Ok(Vec::new());
+    };
+
+    let mut ids: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for entry in &entries {
+        let id = if let Some(s) = entry.get("id").and_then(|v| v.as_str()) {
+            s.trim().to_string()
+        } else if let Some(s) = entry.get("key").and_then(|v| v.as_str()) {
+            s.trim().to_string()
+        } else if let Some(s) = entry.get("path").and_then(|v| v.as_str()) {
+            s.trim().to_string()
+        } else {
+            continue;
+        };
+
+        if id.is_empty() || seen.contains(&id) {
+            continue;
+        }
+        seen.insert(id.clone());
+        ids.push(id);
+    }
+
+    ids.sort();
+    Ok(ids)
+}
+
+// -----------------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------------
 

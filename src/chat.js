@@ -4,6 +4,7 @@
 // AI chat panel — conversation UI separate from the document buffer.
 
 import * as editor from "./editor.js";
+import { clearHistory } from "./chat_history.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
 let messagesEl = null;
@@ -176,6 +177,7 @@ export function clearMessages() {
   activeAssistantBody = null;
   activeAssistantBubble = null;
   pendingUserBubble = null;
+  clearHistory();
 }
 
 /**

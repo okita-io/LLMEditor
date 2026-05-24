@@ -109,6 +109,43 @@ describe("runAgent", () => {
     );
   });
 
+  it("includes prior chat turns before the latest user message", async () => {
+    /** @type {Array<Array<Record<string, unknown>>>} */
+    const capturedMessages = [];
+    vi.mocked(api.agentTurn).mockImplementation(async (messages) => {
+      capturedMessages.push(messages.map((message) => ({ ...message })));
+      return {
+        content: "Restored item A.",
+        tool_calls: [],
+        finish_reason: "stop",
+      };
+    });
+
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "doc";
+
+    await runAgent({
+      userMessage: "put item A back",
+      settings: { system_prompt: "" },
+      bufferEl,
+      contextAnchor: null,
+      priorTurns: [
+        { role: "user", content: "remove item A" },
+        { role: "assistant", content: "Removed item A." },
+      ],
+      callbacks: {
+        getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+      },
+    });
+
+    expect(capturedMessages[0]).toEqual([
+      expect.objectContaining({ role: "system" }),
+      { role: "user", content: "remove item A" },
+      { role: "assistant", content: "Removed item A." },
+      { role: "user", content: "put item A back" },
+    ]);
+  });
+
   it("fires onUnappliedEditsHint when edits remain in final assistant text", async () => {
     vi.mocked(api.agentTurn)
       .mockResolvedValueOnce({

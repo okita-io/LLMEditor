@@ -58,6 +58,7 @@
 
 import * as api from "./api.js";
 import { runAgent } from "./agent.js";
+import { getHistoryForAgent, recordExchange } from "./chat_history.js";
 import { buildContextWindow } from "./context_window.js";
 import * as editorTools from "./editor_tools.js";
 import { extractDocumentEdits } from "./document_edits.js";
@@ -971,13 +972,16 @@ async function _sendAgentPrompt(text, options = {}) {
   let success = false;
   let errorMessage = "";
 
+  let finalText = "";
+
   try {
-    await runAgent({
+    finalText = await runAgent({
       userMessage: text,
       settings,
       bufferEl,
       contextAnchor,
       documentPath: currentPath,
+      priorTurns: getHistoryForAgent(),
       callbacks: {
         getDocumentContext: () => ({
           text: bufferEl.value,
@@ -1002,6 +1006,7 @@ async function _sendAgentPrompt(text, options = {}) {
       },
     });
     success = true;
+    recordExchange(text, finalText);
     _emitStatus("");
   } catch (err) {
     errorMessage = _errorMessage(err);

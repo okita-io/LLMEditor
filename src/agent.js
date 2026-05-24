@@ -21,6 +21,7 @@ const THINKING_NUDGE =
 
 const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
 Use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
+Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
 Use replace_range to rewrite line ranges, insert_text for insertions, delete_range to remove lines, and goto_line to inspect a specific line.
@@ -72,6 +73,7 @@ const MUTATING_TOOLS = new Set(["insert_text", "replace_range", "delete_range"])
  * @property {HTMLTextAreaElement} bufferEl
  * @property {ReturnType<typeof buildContextWindow>|null} [contextAnchor]
  * @property {string|null} [documentPath]
+ * @property {Array<{ role: "user" | "assistant", content: string }>} [priorTurns]
  * @property {AgentCallbacks} callbacks
  */
 
@@ -91,9 +93,15 @@ export async function runAgent(options) {
       ? formatAgentUserMessage(userMessage, contextAnchor, documentPath)
       : userMessage;
 
+  const priorTurns = Array.isArray(options.priorTurns) ? options.priorTurns : [];
+
   /** @type {Array<Record<string, unknown>>} */
   const messages = [
     { role: "system", content: buildSystemPrompt(settings) },
+    ...priorTurns.map((turn) => ({
+      role: turn.role,
+      content: turn.content,
+    })),
     { role: "user", content: userContent },
   ];
 

@@ -165,3 +165,15 @@ export async function loadSettings() {
 export async function saveSettings(settings) {
   return await getInvoke()("save_settings", { settings });
 }
+
+/**
+ * Fetch the list of loaded model IDs from an LM Studio (or compatible)
+ * server via the Rust backend. This avoids CORS issues that would block
+ * a direct `fetch()` from the Tauri webview.
+ *
+ * @param {string} apiUrl Chat completions URL or server base URL.
+ * @returns {Promise<string[]>}
+ */
+export async function listModels(apiUrl) {
+  return await getInvoke()("list_models", { apiUrl });
+}

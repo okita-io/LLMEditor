@@ -43,7 +43,6 @@
 
 import * as api from "./api.js";
 import * as editor from "./editor.js";
-import { fetchLmStudioModels } from "./lm_studio_models.js";
 
 /* -------------------------------------------------------------------- */
 /* Validation bounds (mirror Rust `Settings::validate_field`).          */
@@ -698,7 +697,7 @@ async function onFetchModels() {
   }
 
   try {
-    const models = await fetchLmStudioModels(apiUrl);
+    const models = await api.listModels(apiUrl);
     showModelPicker(models);
   } catch (err) {
     resetModelPicker();

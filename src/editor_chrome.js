@@ -13,6 +13,7 @@ let bufferEl = null;
 let gutterEl = null;
 let overlayEl = null;
 let editorBodyEl = null;
+let mirrorEl = null;
 let onCursorChange = null;
 let ghostSelectionActive = false;
 /** @type {{ start: number, end: number }} */
@@ -184,6 +185,10 @@ export function selectionOverlayRects(textarea, start, end) {
 }
 
 /**
+ * Measure the rendered height of each logical line using the mirror div,
+ * then produce gutter HTML where each line number is vertically aligned
+ * with the start of its corresponding wrapped line.
+ *
  * @param {string} value
  * @param {number} activeLine
  * @param {number} selectionStartLine
@@ -198,18 +203,94 @@ function renderLineNumbers(
   selectionEndLine,
   hasSelection
 ) {
-  const lines = Math.max(1, value.split("\n").length);
-  const rows = [];
-  for (let i = 1; i <= lines; i += 1) {
-    if (hasSelection && i >= selectionStartLine && i <= selectionEndLine) {
-      rows.push(`<span class="line-selected">${i}</span>`);
-    } else if (i === activeLine) {
-      rows.push(`<span class="line-active">${i}</span>`);
-    } else {
-      rows.push(String(i));
+  if (!mirrorEl || !bufferEl) {
+    // Fallback: simple line numbers without height measurement
+    const lines = Math.max(1, value.split("\n").length);
+    const rows = [];
+    for (let i = 1; i <= lines; i += 1) {
+      if (hasSelection && i >= selectionStartLine && i <= selectionEndLine) {
+        rows.push(`<span class="line-selected">${i}</span>`);
+      } else if (i === activeLine) {
+        rows.push(`<span class="line-active">${i}</span>`);
+      } else {
+        rows.push(String(i));
+      }
     }
+    return rows.join("\n");
   }
-  return rows.join("\n");
+
+  const lines = value.split("\n");
+  const lineCount = Math.max(1, lines.length);
+
+  // Sync mirror width with the buffer's content width
+  mirrorEl.style.width = `${bufferEl.clientWidth}px`;
+
+  // One block per logical line so wrapped rows and empty lines measure
+  // independently. Empty lines use a zero-width space so the block keeps
+  // a full row height (inline markers collapse after wrapped text).
+  mirrorEl.innerHTML = buildMirrorHtml(lines);
+
+  // Measure the top offset of each line marker
+  const lineHeights = [];
+  const markers = mirrorEl.querySelectorAll("[data-ln]");
+  for (let i = 0; i < markers.length; i += 1) {
+    lineHeights.push(markers[i].offsetTop);
+  }
+
+  // Compute the line-height in px for a single row
+  const style = getComputedStyle(bufferEl);
+  const singleLineHeight =
+    Number.parseFloat(style.lineHeight) ||
+    Number.parseFloat(style.fontSize) * 1.6 ||
+    22;
+
+  // Build gutter HTML with each line number positioned via height
+  const rows = [];
+  for (let i = 0; i < lineCount; i += 1) {
+    const lineNum = i + 1;
+    const top = lineHeights[i] ?? i * singleLineHeight;
+    const height =
+      i < lineCount - 1
+        ? (lineHeights[i + 1] ?? top + singleLineHeight) - top
+        : markers[i]?.offsetHeight || singleLineHeight;
+
+    let cls = "";
+    if (hasSelection && lineNum >= selectionStartLine && lineNum <= selectionEndLine) {
+      cls = "line-selected";
+    } else if (lineNum === activeLine) {
+      cls = "line-active";
+    }
+
+    rows.push(
+      `<span class="line-number${cls ? " " + cls : ""}" style="height:${height}px;line-height:${singleLineHeight}px">${lineNum}</span>`
+    );
+  }
+  return rows.join("");
+}
+
+/**
+ * @param {string[]} lines
+ * @returns {string}
+ */
+function buildMirrorHtml(lines) {
+  const fragments = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const content = lines[i] ?? "";
+    const inner = content === "" ? "\u200b" : escapeHtml(content);
+    fragments.push(`<div data-ln="${i}">${inner}</div>`);
+  }
+  return fragments.join("");
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -332,6 +413,7 @@ export function attachEditorChrome(buffer, opts = {}) {
   gutterEl = document.getElementById("line-gutter");
   overlayEl = document.getElementById("selection-overlay");
   editorBodyEl = document.getElementById("editor-body");
+  mirrorEl = document.getElementById("buffer-mirror");
   onCursorChange = opts.onCursorChange ?? null;
   charWidthCache = null;
 
@@ -419,6 +501,7 @@ export function attachEditorChrome(buffer, opts = {}) {
     gutterEl = null;
     overlayEl = null;
     editorBodyEl = null;
+    mirrorEl = null;
     onCursorChange = null;
     charWidthCache = null;
   };
@@ -429,6 +512,7 @@ export const _internal = {
   utf16ToCodepoint,
   cursorPosition,
   renderLineNumbers,
+  buildMirrorHtml,
   offsetToLineCol,
   selectionOverlayRects,
   isChatFocused,

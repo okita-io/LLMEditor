@@ -87,6 +87,11 @@ fn http_client() -> &'static reqwest::Client {
     })
 }
 
+/// Public accessor for the shared HTTP client, used by `commands::list_models`.
+pub fn http_client_ref() -> &'static reqwest::Client {
+    http_client()
+}
+
 // -----------------------------------------------------------------------------
 // build_body (Req 12.1, 12.2, 12.4, 12.5)
 // -----------------------------------------------------------------------------

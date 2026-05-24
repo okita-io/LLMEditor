@@ -26,6 +26,7 @@ import {
   addUserMessage,
   _internal,
 } from "../chat.js";
+import { clearHistory, getHistoryForAgent, recordExchange } from "../chat_history.js";
 
 function installDom() {
   document.body.innerHTML = `
@@ -48,6 +49,7 @@ beforeEach(() => {
 
 afterEach(() => {
   clearMessages();
+  clearHistory();
   document.body.innerHTML = "";
 });
 
@@ -95,6 +97,13 @@ describe("clearMessages", () => {
     clearMessages();
 
     expect(document.querySelectorAll(".chat-bubble").length).toBe(0);
+  });
+
+  it("clears stored chat history for the agent", () => {
+    installDom();
+    recordExchange("remove item A", "Removed item A.");
+    clearMessages();
+    expect(getHistoryForAgent()).toEqual([]);
   });
 });
 

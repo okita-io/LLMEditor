@@ -526,7 +526,12 @@ body {
   line-height: var(--line-height-editor);
   color: var(--text-muted);
   user-select: none;
-  white-space: pre;
+  white-space: nowrap;
+}
+
+.line-gutter .line-number {
+  display: block;
+  box-sizing: border-box;
 }
 
 .line-gutter .line-active {
@@ -557,10 +562,35 @@ body {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
-  white-space: pre;
-  word-break: normal;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
   tab-size: 4;
   -moz-tab-size: 4;
+}
+
+#buffer-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  padding: 16px 16px 16px 12px;
+  border: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+#buffer-mirror [data-ln] {
+  display: block;
 }
 
 #buffer:disabled {

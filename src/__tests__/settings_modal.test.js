@@ -33,6 +33,7 @@ vi.mock("../api.js", () => {
   return {
     loadSettings: vi.fn(),
     saveSettings: vi.fn(),
+    listModels: vi.fn(),
   };
 });
 
@@ -61,6 +62,7 @@ beforeEach(() => {
   _internal.reset();
   api.loadSettings.mockReset();
   api.saveSettings.mockReset();
+  api.listModels.mockReset();
   api.loadSettings.mockResolvedValue({ ...VALID_SETTINGS });
   api.saveSettings.mockResolvedValue(undefined);
 });
@@ -645,30 +647,14 @@ describe("Cancel button", () => {
 });
 
 describe("Load models from LM Studio", () => {
-  /** @type {typeof fetch} */
-  let originalFetch;
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
   it("renders Load models control with the model field", async () => {
     await open();
     expect(document.querySelector("#settings-fetch-models")).not.toBeNull();
     expect(document.querySelector("#settings-model-picker").hidden).toBe(true);
   });
 
-  it("populates the picker and model field from /api/v1/models", async () => {
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        data: [{ id: "qwen-7b" }, { id: "llama-3" }],
-      }),
-    }));
+  it("populates the picker and model field from api.listModels", async () => {
+    api.listModels.mockResolvedValueOnce(["llama-3", "qwen-7b"]);
 
     await open();
     document.querySelector("#settings-fetch-models").click();
@@ -689,7 +675,7 @@ describe("Load models from LM Studio", () => {
   });
 
   it("shows an inline error when the models request fails", async () => {
-    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 502 }));
+    api.listModels.mockRejectedValueOnce(new Error("models request failed: HTTP 502"));
 
     await open();
     document.querySelector("#settings-fetch-models").click();

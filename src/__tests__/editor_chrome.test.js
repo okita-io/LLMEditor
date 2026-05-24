@@ -18,6 +18,7 @@ function installEditorDom() {
       <div class="editor-buffer-wrap">
         <div id="selection-overlay"></div>
         <textarea id="buffer"></textarea>
+        <div id="buffer-mirror"></div>
       </div>
     </div>
   `;
@@ -103,5 +104,13 @@ describe("_internal.renderLineNumbers", () => {
   it("marks all selected lines in the gutter", () => {
     const html = _internal.renderLineNumbers("a\nb\nc", 2, 1, 3, true);
     expect(html.match(/line-selected/g)?.length).toBe(3);
+  });
+});
+
+describe("_internal.buildMirrorHtml", () => {
+  it("uses block rows with a zero-width space for empty lines", () => {
+    const html = _internal.buildMirrorHtml(["wrapped line", ""]);
+    expect(html).toContain('<div data-ln="0">wrapped line</div>');
+    expect(html).toContain('<div data-ln="1">\u200b</div>');
   });
 });
