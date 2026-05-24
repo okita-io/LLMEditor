@@ -8,6 +8,7 @@ import * as editorTools from "./editor_tools.js";
 import {
   buildContextWindow,
   formatAgentUserMessage,
+  refreshContextWindow,
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 
@@ -89,14 +90,36 @@ const MUTATING_TOOLS = new Set([
  * @param {RunAgentOptions} options
  * @returns {Promise<string>}
  */
+/**
+ * @param {{ text: string, path?: string|null, contextAnchor?: ReturnType<typeof buildContextWindow>|null }} ctx
+ * @param {HTMLTextAreaElement} bufferEl
+ * @param {ReturnType<typeof buildContextWindow>|null} fallbackAnchor
+ * @returns {ReturnType<typeof buildContextWindow>|null}
+ */
+function resolveLiveContextWindow(ctx, bufferEl, fallbackAnchor) {
+  if (ctx.contextAnchor && typeof ctx.contextAnchor === "object") {
+    return ctx.contextAnchor;
+  }
+  if (fallbackAnchor && typeof fallbackAnchor === "object") {
+    return refreshContextWindow(bufferEl.value, fallbackAnchor);
+  }
+  return null;
+}
+
 export async function runAgent(options) {
   const { userMessage, settings, bufferEl, callbacks, documentPath = null } = options;
   const getContext = callbacks.getDocumentContext;
   const contextAnchor = options.contextAnchor ?? null;
+  const ctx = getContext();
+  const liveWindow = resolveLiveContextWindow(ctx, bufferEl, contextAnchor);
 
   const userContent =
-    contextAnchor !== null
-      ? formatAgentUserMessage(userMessage, contextAnchor, documentPath)
+    liveWindow !== null
+      ? formatAgentUserMessage(
+          userMessage,
+          liveWindow,
+          documentPath ?? ctx.path ?? null
+        )
       : userMessage;
 
   const priorTurns = Array.isArray(options.priorTurns) ? options.priorTurns : [];
@@ -219,4 +242,5 @@ export const _internal = {
   buildSystemPrompt,
   MAX_TURNS,
   DEFAULT_TOOL_SYSTEM,
+  resolveLiveContextWindow,
 };

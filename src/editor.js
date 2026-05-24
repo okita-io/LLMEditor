@@ -60,6 +60,7 @@ import * as api from "./api.js";
 import { runAgent } from "./agent.js";
 import { getHistoryForAgent, recordExchange } from "./chat_history.js";
 import { buildContextWindow } from "./context_window.js";
+import { getSelectionForContext } from "./editor_chrome.js";
 import * as editorTools from "./editor_tools.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
@@ -894,6 +895,17 @@ export async function retryChatMessage(text) {
 }
 
 /**
+ * Build a context window from the live buffer and the selection the user
+ * sees (pinned ghost selection when chat is focused).
+ *
+ * @returns {ReturnType<typeof buildContextWindow>}
+ */
+function _buildLiveContextAnchor() {
+  const { start, end } = getSelectionForContext(bufferEl);
+  return buildContextWindow(bufferEl.value, start, end);
+}
+
+/**
  * Run the tool-use agent loop for a chat instruction.
  *
  * @param {string} text
@@ -929,11 +941,7 @@ async function _sendAgentPrompt(text, options = {}) {
   }
   _emitStatus("Thinking…");
 
-  const selStart =
-    typeof bufferEl.selectionStart === "number" ? bufferEl.selectionStart : 0;
-  const selEnd =
-    typeof bufferEl.selectionEnd === "number" ? bufferEl.selectionEnd : selStart;
-  const contextAnchor = buildContextWindow(bufferEl.value, selStart, selEnd);
+  const contextAnchor = _buildLiveContextAnchor();
 
   let success = false;
   let errorMessage = "";
@@ -952,7 +960,7 @@ async function _sendAgentPrompt(text, options = {}) {
         getDocumentContext: () => ({
           text: bufferEl.value,
           path: currentPath,
-          contextAnchor,
+          contextAnchor: _buildLiveContextAnchor(),
         }),
         onToolCall: (toolCall) => {
           _emitToolCall(toolCall);

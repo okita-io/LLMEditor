@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runAgent, _internal } from "../agent.js";
+import { buildContextWindow } from "../context_window.js";
 import * as api from "../api.js";
 
 vi.mock("../api.js", () => ({
@@ -143,6 +144,41 @@ describe("runAgent", () => {
       { role: "assistant", content: "Removed item A." },
       { role: "user", content: "put item A back" },
     ]);
+  });
+
+  it("uses live buffer text in the context window when the passed anchor is stale", async () => {
+    const staleAnchor = buildContextWindow("old text", 0, 8);
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "new text";
+
+    vi.mocked(api.agentTurn).mockImplementation(async (messages) => {
+      const userMessage = messages.find(
+        (message) =>
+          message.role === "user" &&
+          String(message.content).includes("User request: fix it")
+      );
+      expect(String(userMessage?.content)).toContain("new text");
+      expect(String(userMessage?.content)).not.toContain("old text");
+      return {
+        content: "ok",
+        tool_calls: [],
+        finish_reason: "stop",
+      };
+    });
+
+    await runAgent({
+      userMessage: "fix it",
+      settings: { system_prompt: "" },
+      bufferEl,
+      contextAnchor: staleAnchor,
+      callbacks: {
+        getDocumentContext: () => ({
+          text: bufferEl.value,
+          path: null,
+          contextAnchor: buildContextWindow(bufferEl.value, 0, bufferEl.value.length),
+        }),
+      },
+    });
   });
 
   it("fires onUnappliedEditsHint when edits remain in final assistant text", async () => {

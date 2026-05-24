@@ -304,6 +304,30 @@ function isChatFocused() {
 }
 
 /**
+ * Selection used for LLM context when the buffer is not focused (e.g. chat
+ * input). Mirrors the ghost-selection overlay so context matches what the
+ * user sees highlighted in the editor.
+ *
+ * @param {HTMLTextAreaElement|null|undefined} buffer
+ * @returns {{ start: number, end: number }}
+ */
+export function getSelectionForContext(buffer) {
+  if (!buffer) return { start: 0, end: 0 };
+  const usePinned = ghostSelectionActive || document.activeElement !== buffer;
+  const start = usePinned
+    ? pinnedSelection.start
+    : typeof buffer.selectionStart === "number"
+      ? buffer.selectionStart
+      : 0;
+  const end = usePinned
+    ? pinnedSelection.end
+    : typeof buffer.selectionEnd === "number"
+      ? buffer.selectionEnd
+      : start;
+  return { start, end };
+}
+
+/**
  * @returns {void}
  */
 function captureSelection() {
@@ -362,17 +386,7 @@ function renderGhostOverlay() {
 function refreshChrome() {
   if (!bufferEl || !gutterEl) return;
   const value = typeof bufferEl.value === "string" ? bufferEl.value : "";
-  const usePinned = ghostSelectionActive || document.activeElement !== bufferEl;
-  const selStart = usePinned
-    ? pinnedSelection.start
-    : typeof bufferEl.selectionStart === "number"
-      ? bufferEl.selectionStart
-      : 0;
-  const selEnd = usePinned
-    ? pinnedSelection.end
-    : typeof bufferEl.selectionEnd === "number"
-      ? bufferEl.selectionEnd
-      : selStart;
+  const { start: selStart, end: selEnd } = getSelectionForContext(bufferEl);
   const { startLine, endLine, hasSelection } = selectionLineRange(
     value,
     selStart,
@@ -517,4 +531,5 @@ export const _internal = {
   selectionOverlayRects,
   isChatFocused,
   syncGhostState,
+  getSelectionForContext,
 };

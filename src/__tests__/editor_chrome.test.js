@@ -74,6 +74,23 @@ describe("editor_chrome ghost selection", () => {
 
     expect(document.querySelector(".ghost-caret")).not.toBeNull();
   });
+
+  it("uses pinned selection for context when chat is focused", () => {
+    const buffer = installEditorDom();
+    buffer.value = "hello\nworld";
+    attachEditorChrome(buffer);
+
+    buffer.selectionStart = 6;
+    buffer.selectionEnd = 11;
+    buffer.focus();
+
+    document.getElementById("chat-input").focus();
+
+    buffer.selectionStart = 0;
+    buffer.selectionEnd = 0;
+
+    expect(_internal.getSelectionForContext(buffer)).toEqual({ start: 6, end: 11 });
+  });
 });
 
 describe("selectionOverlayRects", () => {
