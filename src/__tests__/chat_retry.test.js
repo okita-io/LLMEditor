@@ -77,6 +77,11 @@ describe("chat retry on agent failure", () => {
         content: "Done.",
         tool_calls: [],
         finish_reason: "stop",
+      })
+      .mockResolvedValueOnce({
+        content: "Done.",
+        tool_calls: [],
+        finish_reason: "stop",
       });
 
     installDom();
@@ -88,7 +93,7 @@ describe("chat retry on agent failure", () => {
     const retryBtn = messages[0].querySelector(".chat-retry-btn");
     expect(retryBtn).not.toBeNull();
     retryBtn?.click();
-    await vi.waitFor(() => expect(api.agentTurn).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(api.agentTurn).toHaveBeenCalledTimes(3));
 
     messages = document.querySelectorAll(".chat-bubble-user");
     expect(messages.length).toBe(1);

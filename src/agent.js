@@ -16,6 +16,9 @@ const MAX_TURNS = 16;
 const APPLY_NUDGE =
   "You described document changes in chat but did not apply them with tools. Use replace_range, insert_text, or delete_range now to write those edits into the document. Do not send another prose-only reply until the tools have run.";
 
+const THINKING_NUDGE =
+  "You responded with text but did not call any tools. Please use the provided tools (replace_range, insert_text, delete_range, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
+
 const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
 Use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
@@ -97,6 +100,7 @@ export async function runAgent(options) {
   let finalText = "";
   let mutatingToolCount = 0;
   let applyNudgeUsed = false;
+  let thinkingNudgeUsed = false;
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const response = await api.agentTurn(messages, settings);
@@ -168,6 +172,17 @@ export async function runAgent(options) {
         applyNudgeUsed = true;
         messages.push({ role: "assistant", content: response.content });
         messages.push({ role: "user", content: APPLY_NUDGE });
+        continue;
+      }
+
+      // If the model responded with text (possibly thinking) but made
+      // no tool calls and hasn't mutated the document yet, give it one
+      // more chance to act. This handles models that emit <think> tags
+      // or chain-of-thought before calling tools.
+      if (!thinkingNudgeUsed && mutatingToolCount === 0) {
+        thinkingNudgeUsed = true;
+        messages.push({ role: "assistant", content: response.content });
+        messages.push({ role: "user", content: THINKING_NUDGE });
         continue;
       }
 

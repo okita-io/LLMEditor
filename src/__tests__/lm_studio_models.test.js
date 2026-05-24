@@ -46,47 +46,46 @@ describe("fetchLmStudioModels", () => {
     vi.restoreAllMocks();
   });
 
-  it("requests /api/v1/models and returns sorted unique model ids", async () => {
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        data: [{ id: "z-model" }, { id: "a-model" }, { id: "a-model" }],
-      }),
-    }));
+  it("requests /v1/models first (loaded models) and returns sorted unique model ids", async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (url.includes("/v1/models") && !url.includes("/api/")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{ id: "z-model" }, { id: "a-model" }, { id: "a-model" }],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ data: [] }) };
+    });
 
     const models = await fetchLmStudioModels(
       "http://localhost:1234/v1/chat/completions"
     );
     expect(models).toEqual(["a-model", "z-model"]);
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://localhost:1234/api/v1/models",
+      "http://localhost:1234/v1/models",
       { method: "GET", headers: { Accept: "application/json" } }
     );
   });
 
-  it("falls back to /v1/models when /api/v1/models returns 404", async () => {
+  it("falls back to /api/v1/models when /v1/models fails", async () => {
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false, status: 404 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: [{ id: "legacy-model" }] }),
+      .mockImplementation(async (url) => {
+        if (url.includes("/v1/models") && !url.includes("/api/")) {
+          return { ok: false, status: 404 };
+        }
+        return {
+          ok: true,
+          json: async () => ({ data: [{ id: "fallback-model" }] }),
+        };
       });
 
     const models = await fetchLmStudioModels(
       "http://localhost:1234/v1/chat/completions"
     );
-    expect(models).toEqual(["legacy-model"]);
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(
-      1,
-      "http://localhost:1234/api/v1/models",
-      { method: "GET", headers: { Accept: "application/json" } }
-    );
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(
-      2,
-      lmStudioLegacyModelsUrl("http://localhost:1234/v1/chat/completions"),
-      { method: "GET", headers: { Accept: "application/json" } }
-    );
+    expect(models).toEqual(["fallback-model"]);
   });
 
   it("throws when HTTP status is not ok", async () => {

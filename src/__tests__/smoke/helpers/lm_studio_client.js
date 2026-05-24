@@ -6,7 +6,7 @@
 import { editorToolDefinitions } from "../../../editor_tool_schemas.js";
 import { fetchLmStudioModels, lmStudioBaseUrl, lmStudioModelsUrl } from "../../../lm_studio_models.js";
 
-const DEFAULT_API_URL = "http://10.0.1.5:1234/v1/chat/completions";
+const DEFAULT_API_URL = "http://10.0.1.2:1234/v1/chat/completions";
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 /**

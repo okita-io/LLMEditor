@@ -96,7 +96,13 @@ async function parseModelsResponse(res) {
   }
 
   const body = await res.json();
-  const entries = Array.isArray(body?.data) ? body.data : [];
+  // Support both OpenAI-compatible format ({ data: [...] }) and
+  // LM Studio's native REST format ({ models: [...] }).
+  const entries = Array.isArray(body?.data)
+    ? body.data
+    : Array.isArray(body?.models)
+      ? body.models
+      : [];
   /** @type {string[]} */
   const ids = [];
   const seen = new Set();
@@ -105,7 +111,9 @@ async function parseModelsResponse(res) {
     const id =
       entry && typeof entry === "object" && typeof entry.id === "string"
         ? entry.id.trim()
-        : "";
+        : entry && typeof entry === "object" && typeof entry.key === "string"
+          ? entry.key.trim()
+          : "";
     if (id.length === 0 || seen.has(id)) continue;
     seen.add(id);
     ids.push(id);
@@ -134,10 +142,19 @@ export async function fetchLmStudioModels(apiUrl, options = {}) {
   }
 
   const legacyUrl = lmStudioLegacyModelsUrl(apiUrl);
-  let res = await fetchWithTimeout(primaryUrl, timeoutMs);
-  if (!res.ok && legacyUrl && legacyUrl !== primaryUrl && res.status === 404) {
-    res = await fetchWithTimeout(legacyUrl, timeoutMs);
+  // Prefer the OpenAI-compatible /v1/models endpoint first — it only
+  // returns loaded models. The native /api/v1/models endpoint returns
+  // all downloaded models (including unloaded ones), which causes
+  // "model not found" errors at inference time.
+  let res;
+  if (legacyUrl && legacyUrl !== primaryUrl) {
+    try {
+      res = await fetchWithTimeout(legacyUrl, timeoutMs);
+      if (res.ok) return parseModelsResponse(res);
+    } catch {
+      // Fall through to primary
+    }
   }
-
+  res = await fetchWithTimeout(primaryUrl, timeoutMs);
   return parseModelsResponse(res);
 }

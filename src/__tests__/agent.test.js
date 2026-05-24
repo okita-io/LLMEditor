@@ -74,6 +74,12 @@ describe("runAgent", () => {
         finish_reason: "stop",
       })
       .mockResolvedValueOnce({
+        content:
+          '```json\n{"tool":"insert_text","line":2,"column":1,"text":"added"}\n```',
+        tool_calls: [],
+        finish_reason: "stop",
+      })
+      .mockResolvedValueOnce({
         content: "Applied the insert.",
         tool_calls: [],
         finish_reason: "stop",
@@ -94,8 +100,9 @@ describe("runAgent", () => {
       },
     });
 
-    expect(api.agentTurn).toHaveBeenCalledTimes(2);
-    expect(api.agentTurn.mock.calls[1][0]).toEqual(
+    expect(api.agentTurn).toHaveBeenCalledTimes(3);
+    // The apply nudge message should be in the conversation
+    expect(api.agentTurn.mock.calls[2][0]).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: "user", content: expect.stringContaining("did not apply") }),
       ])
@@ -104,6 +111,12 @@ describe("runAgent", () => {
 
   it("fires onUnappliedEditsHint when edits remain in final assistant text", async () => {
     vi.mocked(api.agentTurn)
+      .mockResolvedValueOnce({
+        content:
+          'Still in chat only:\n```json\n{"tool":"insert_text","line":1,"column":1,"text":"x"}\n```',
+        tool_calls: [],
+        finish_reason: "stop",
+      })
       .mockResolvedValueOnce({
         content:
           'Still in chat only:\n```json\n{"tool":"insert_text","line":1,"column":1,"text":"x"}\n```',
