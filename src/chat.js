@@ -4,6 +4,7 @@
 // AI chat panel — conversation UI separate from the document buffer.
 
 import * as editor from "./editor.js";
+import * as api from "./api.js";
 import { clearHistory, getHistoryForAgent } from "./chat_history.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
@@ -11,9 +12,16 @@ let messagesEl = null;
 let inputEl = null;
 let sendBtn = null;
 let clearBtn = null;
-let modelEl = null;
+/** @type {HTMLSelectElement | null} */
+let modelPickerEl = null;
 /** @type {HTMLElement | null} */
 let tokenCountEl = null;
+/** @type {string} */
+let activeRequestModel = "";
+/** @type {boolean} */
+let modelListLoaded = false;
+/** @type {boolean} */
+let modelListLoading = false;
 /** @type {HTMLElement | null} */
 let activeAssistantBubble = null;
 /** @type {HTMLElement | null} */
@@ -44,7 +52,7 @@ function estimateContextTokens() {
 function updateTokenCount() {
   if (!tokenCountEl) return;
   const tokens = estimateContextTokens();
-  tokenCountEl.textContent = `${tokens.toLocaleString()} tokens`;
+  tokenCountEl.textContent = `${tokens.toLocaleString()} Tokens`;
 }
 
 /**
@@ -184,7 +192,89 @@ async function retryUserMessage(bubble) {
 function setStreamingUi(streaming) {
   if (inputEl) inputEl.disabled = streaming;
   if (sendBtn) sendBtn.disabled = streaming;
-  if (modelEl) modelEl.classList.toggle("streaming", streaming);
+  if (modelPickerEl) {
+    modelPickerEl.disabled = streaming;
+    modelPickerEl.classList.toggle("streaming", streaming);
+  }
+}
+
+/**
+ * @param {string[]} modelIds
+ * @param {string} [selectedModel]
+ * @returns {void}
+ */
+function populateModelPicker(modelIds, selectedModel) {
+  if (!modelPickerEl) return;
+
+  const selected =
+    typeof selectedModel === "string" && selectedModel.length > 0 ? selectedModel : "";
+  const ids = Array.isArray(modelIds) ? modelIds.slice() : [];
+
+  if (selected.length > 0 && !ids.includes(selected)) {
+    ids.unshift(selected);
+  }
+
+  modelPickerEl.replaceChildren();
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "(no model)";
+  modelPickerEl.appendChild(placeholder);
+
+  for (const id of ids) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    modelPickerEl.appendChild(opt);
+  }
+
+  modelPickerEl.value = selected.length > 0 && ids.includes(selected) ? selected : "";
+}
+
+/**
+ * @returns {Promise<void>}
+ */
+async function loadModelList() {
+  if (modelListLoaded || modelListLoading || !modelPickerEl) return;
+  modelListLoading = true;
+
+  try {
+    const settings = await api.loadSettings();
+    const currentModel =
+      typeof settings?.model === "string" ? settings.model : modelPickerEl.value;
+    const models = await api.listModels(settings.api_url);
+    populateModelPicker(models, currentModel);
+    modelListLoaded = true;
+  } catch {
+    const current = modelPickerEl.value;
+    if (current.length > 0) {
+      populateModelPicker([current], current);
+    }
+  } finally {
+    modelListLoading = false;
+  }
+}
+
+/**
+ * @returns {Promise<void>}
+ */
+async function onModelPickerChange() {
+  if (!modelPickerEl) return;
+
+  const model = modelPickerEl.value;
+  try {
+    const settings = await api.loadSettings();
+    await api.saveSettings({ ...settings, model });
+    if (typeof document !== "undefined" && typeof CustomEvent === "function") {
+      document.dispatchEvent(
+        new CustomEvent("settings:model-changed", {
+          detail: { model },
+        })
+      );
+    }
+  } catch {
+    /* keep picker value; save failure is silent in chat UI */
+  }
 }
 
 /**
@@ -192,9 +282,13 @@ function setStreamingUi(streaming) {
  * @returns {void}
  */
 export function setModelName(model) {
-  if (!modelEl) return;
-  modelEl.textContent =
-    typeof model === "string" && model.length > 0 ? model : "(no model)";
+  if (!modelPickerEl) return;
+  const name = typeof model === "string" && model.length > 0 ? model : "";
+  if (name.length > 0) {
+    populateModelPicker([name], name);
+  } else {
+    populateModelPicker([], "");
+  }
 }
 
 /**
@@ -218,24 +312,188 @@ export function addUserMessage(text) {
 }
 
 /**
- * @param {string} name
- * @param {string} argsJson
+ * @param {string} raw
+ * @returns {string}
+ */
+function prettyJson(raw) {
+  if (typeof raw !== "string" || raw.length === 0) return "{}";
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} documentView
+ * @returns {string}
+ */
+function formatDocumentView(documentView) {
+  if (!documentView || typeof documentView !== "object") {
+    return "(no document snapshot)";
+  }
+  const header = [];
+  const path =
+    typeof documentView.path === "string" && documentView.path.length > 0
+      ? documentView.path
+      : "(untitled)";
+  header.push(`Document: ${path}`);
+  if (typeof documentView.lines === "number") {
+    header.push(`Total lines: ${documentView.lines}`);
+  }
+  if (documentView.is_truncated === true) {
+    header.push(
+      `Context window: lines ${documentView.window_start_line}-${documentView.window_end_line}`
+    );
+  }
+  const numbered =
+    typeof documentView.numbered === "string" ? documentView.numbered : "";
+  return numbered.length > 0 ? `${header.join("\n")}\n\n${numbered}` : header.join("\n");
+}
+
+/**
+ * @param {Record<string, unknown>} result
+ * @returns {string}
+ */
+function formatToolResultForLog(result) {
+  /** @type {Record<string, unknown>} */
+  const display = { ...result };
+
+  if (typeof display.new_text === "string" && display.new_text.length > 400) {
+    const len = display.new_text.length;
+    display.new_text = `[${len} chars — truncated for display]\n${display.new_text.slice(0, 400)}…`;
+  }
+
+  if (typeof display.content === "string" && display.content.length > 3000) {
+    const len = display.content.length;
+    display.content = `${display.content.slice(0, 3000)}\n… [${len} chars total]`;
+  }
+
+  return JSON.stringify(display, null, 2);
+}
+
+/**
+ * @param {string} summary
+ * @returns {string}
+ */
+function summarizeToolResult(name, result) {
+  if (!result || result.ok !== true) {
+    return `${name} failed: ${result?.error ?? "unknown error"}`;
+  }
+  if (name === "get_document") {
+    return `${name} returned document snapshot (${result.lines ?? "?"} lines)`;
+  }
+  if (name === "goto_line") {
+    return `${name} → line ${result.line}: ${result.line_text ?? ""}`;
+  }
+  if (result.changed === false) {
+    return `${name} → no change (document unchanged)`;
+  }
+  if (result.changed === true) {
+    return `${name} → document updated`;
+  }
+  return `${name} → ok`;
+}
+
+/**
+ * @param {HTMLElement} bubble
+ * @param {string} title
+ * @param {string} content
  * @returns {void}
  */
-export function appendToolCall(name, argsJson) {
+function appendLogSection(bubble, title, content) {
+  const section = document.createElement("div");
+  section.className = "chat-log-section";
+
+  const heading = document.createElement("div");
+  heading.className = "chat-log-section-title";
+  heading.textContent = title;
+  section.appendChild(heading);
+
+  const pre = document.createElement("pre");
+  pre.className = "chat-log-pre";
+  pre.textContent = content;
+  section.appendChild(pre);
+
+  bubble.appendChild(section);
+}
+
+/**
+ * @param {string} userContent
+ * @param {string} systemPrompt
+ * @returns {void}
+ */
+export function appendAgentContext(userContent, systemPrompt) {
   if (!messagesEl) return;
+
   const bubble = document.createElement("div");
-  bubble.className = "chat-bubble chat-bubble-tool";
+  bubble.className = "chat-bubble chat-bubble-context";
 
   const label = document.createElement("div");
   label.className = "chat-bubble-label";
-  label.textContent = "Tool";
+  label.textContent = "LLM input";
   bubble.appendChild(label);
 
-  const body = document.createElement("div");
-  body.className = "chat-bubble-body chat-tool-body";
-  body.textContent = `${name}(${argsJson})`;
-  bubble.appendChild(body);
+  if (typeof systemPrompt === "string" && systemPrompt.length > 0) {
+    appendLogSection(bubble, "System prompt", systemPrompt);
+  }
+  appendLogSection(
+    bubble,
+    "User message (as sent to model)",
+    typeof userContent === "string" ? userContent : ""
+  );
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {string} content
+ * @returns {void}
+ */
+export function appendAssistantToolTurn(content) {
+  if (!messagesEl || typeof content !== "string" || content.length === 0) return;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-agent-turn";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = "Model (tool turn)";
+  bubble.appendChild(label);
+
+  appendLogSection(bubble, "Assistant content before tools", content);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {string} name
+ * @param {string} argsJson
+ * @param {Record<string, unknown> | null} [documentView]
+ * @param {string} [toolCallId]
+ * @returns {void}
+ */
+export function appendToolCall(name, argsJson, documentView = null, toolCallId = "") {
+  if (!messagesEl) return;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-tool";
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    bubble.dataset.toolCallId = toolCallId;
+  }
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = `Tool call: ${name}`;
+  bubble.appendChild(label);
+
+  appendLogSection(bubble, "Arguments", prettyJson(argsJson));
+  appendLogSection(
+    bubble,
+    "Document before tool (model's view)",
+    formatDocumentView(documentView)
+  );
 
   messagesEl.appendChild(bubble);
   scrollMessagesToBottom();
@@ -244,30 +502,28 @@ export function appendToolCall(name, argsJson) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} result
+ * @param {string} [toolCallId]
  * @returns {void}
  */
-export function appendToolResult(name, result) {
+export function appendToolResult(name, result, toolCallId = "") {
   if (!messagesEl) return;
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble chat-bubble-tool-result";
+  if (typeof toolCallId === "string" && toolCallId.length > 0) {
+    bubble.dataset.toolCallId = toolCallId;
+  }
 
   const label = document.createElement("div");
   label.className = "chat-bubble-label";
-  label.textContent = "Result";
+  label.textContent = `Tool result: ${name}`;
   bubble.appendChild(label);
 
-  const body = document.createElement("div");
-  body.className = "chat-bubble-body chat-tool-body";
-  let summary;
-  if (!result || result.ok !== true) {
-    summary = `${name} → error: ${result?.error ?? "failed"}`;
-  } else if (result.changed === false) {
-    summary = `${name} → no change (document unchanged)`;
-  } else {
-    summary = `${name} → applied`;
-  }
-  body.textContent = summary;
-  bubble.appendChild(body);
+  appendLogSection(bubble, "Summary", summarizeToolResult(name, result ?? {}));
+  appendLogSection(
+    bubble,
+    "Return value (as sent to model)",
+    formatToolResultForLog(result ?? {})
+  );
 
   messagesEl.appendChild(bubble);
   scrollMessagesToBottom();
@@ -288,7 +544,10 @@ export function beginAssistantMessage(initialText = "") {
 
   const label = document.createElement("div");
   label.className = "chat-bubble-label";
-  label.textContent = "Assistant";
+  const modelLabel =
+    activeRequestModel.length > 0 ? activeRequestModel : "(no model)";
+  label.textContent = modelLabel;
+  bubble.dataset.model = modelLabel;
   head.appendChild(label);
 
   const actions = document.createElement("div");
@@ -389,8 +648,21 @@ export function initializeChat() {
   inputEl = document.getElementById("chat-input");
   sendBtn = document.getElementById("chat-send");
   clearBtn = document.getElementById("chat-clear");
-  modelEl = document.getElementById("chat-model");
+  modelPickerEl = document.getElementById("chat-model-picker");
   tokenCountEl = document.getElementById("chat-token-count");
+
+  if (modelPickerEl && !modelPickerEl.dataset.chatBound) {
+    modelPickerEl.dataset.chatBound = "1";
+    modelPickerEl.addEventListener("focus", () => {
+      void loadModelList();
+    });
+    modelPickerEl.addEventListener("mousedown", () => {
+      void loadModelList();
+    });
+    modelPickerEl.addEventListener("change", () => {
+      void onModelPickerChange();
+    });
+  }
 
   if (sendBtn && !sendBtn.dataset.chatBound) {
     sendBtn.dataset.chatBound = "1";
@@ -427,6 +699,11 @@ export function initializeChat() {
         detail && typeof detail === "object" && typeof detail.text === "string"
           ? detail.text
           : "";
+      const model =
+        detail && typeof detail === "object" && typeof detail.model === "string"
+          ? detail.model
+          : modelPickerEl?.value ?? "";
+      activeRequestModel = model;
       if (text.length > 0) appendUserMessage(text);
       activeAssistantBody = null;
       setStreamingUi(true);
@@ -439,6 +716,11 @@ export function initializeChat() {
         detail && typeof detail === "object" && typeof detail.text === "string"
           ? detail.text
           : "";
+      const model =
+        detail && typeof detail === "object" && typeof detail.model === "string"
+          ? detail.model
+          : modelPickerEl?.value ?? "";
+      activeRequestModel = model;
       if (pendingUserBubble && text.length > 0) {
         clearUserBubbleFailure(pendingUserBubble);
       }
@@ -476,13 +758,48 @@ export function initializeChat() {
       }
     });
 
+    document.addEventListener("editor:agent-context", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const userContent =
+        detail && typeof detail === "object" && typeof detail.userContent === "string"
+          ? detail.userContent
+          : "";
+      const systemPrompt =
+        detail && typeof detail === "object" && typeof detail.systemPrompt === "string"
+          ? detail.systemPrompt
+          : "";
+      if (userContent.length > 0 || systemPrompt.length > 0) {
+        appendAgentContext(userContent, systemPrompt);
+      }
+    });
+
+    document.addEventListener("editor:agent-tool-turn", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const content =
+        detail && typeof detail === "object" && typeof detail.content === "string"
+          ? detail.content
+          : "";
+      appendAssistantToolTurn(content);
+    });
+
     document.addEventListener("editor:tool-call", (event) => {
       const detail =
         event && typeof event === "object" && "detail" in event ? event.detail : null;
       const toolCall =
         detail && typeof detail === "object" && detail.toolCall ? detail.toolCall : null;
+      const documentView =
+        detail && typeof detail === "object" && detail.documentView
+          ? detail.documentView
+          : null;
       if (!toolCall || typeof toolCall.name !== "string") return;
-      appendToolCall(toolCall.name, toolCall.arguments ?? "{}");
+      appendToolCall(
+        toolCall.name,
+        toolCall.arguments ?? "{}",
+        documentView,
+        toolCall.id ?? ""
+      );
     });
 
     document.addEventListener("editor:tool-result", (event) => {
@@ -493,7 +810,7 @@ export function initializeChat() {
       const result =
         detail && typeof detail === "object" && detail.result ? detail.result : null;
       if (!toolCall || typeof toolCall.name !== "string") return;
-      appendToolResult(toolCall.name, result ?? {});
+      appendToolResult(toolCall.name, result ?? {}, toolCall.id ?? "");
     });
 
     document.addEventListener("editor:chat-token", (event) => {

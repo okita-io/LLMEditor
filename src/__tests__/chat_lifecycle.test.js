@@ -23,6 +23,7 @@ import {
   finalizeAssistantMessage,
   appendToolCall,
   appendToolResult,
+  appendAgentContext,
   addUserMessage,
   _internal,
 } from "../chat.js";
@@ -31,11 +32,12 @@ import { clearHistory, getHistoryForAgent, recordExchange } from "../chat_histor
 function installDom() {
   document.body.innerHTML = `
     <aside id="chat-panel">
-      <span id="chat-model"></span>
       <div id="chat-messages"></div>
+      <select id="chat-model-picker"><option value="">(no model)</option></select>
       <textarea id="chat-input"></textarea>
       <button id="chat-send"></button>
       <button id="chat-clear"></button>
+      <span id="chat-token-count"></span>
     </aside>
     <textarea id="buffer"></textarea>
   `;
@@ -67,22 +69,22 @@ describe("initializeChat", () => {
 });
 
 describe("setModelName", () => {
-  it("updates the model span text", () => {
+  it("updates the model picker value", () => {
     installDom();
     setModelName("qwen-7b");
-    expect(document.getElementById("chat-model").textContent).toBe("qwen-7b");
+    expect(document.getElementById("chat-model-picker").value).toBe("qwen-7b");
   });
 
-  it("shows (no model) for empty string", () => {
+  it("clears the picker for empty string", () => {
     installDom();
     setModelName("");
-    expect(document.getElementById("chat-model").textContent).toBe("(no model)");
+    expect(document.getElementById("chat-model-picker").value).toBe("");
   });
 
-  it("shows (no model) for null", () => {
+  it("clears the picker for null", () => {
     installDom();
     setModelName(null);
-    expect(document.getElementById("chat-model").textContent).toBe("(no model)");
+    expect(document.getElementById("chat-model-picker").value).toBe("");
   });
 });
 
@@ -163,33 +165,70 @@ describe("assistant message lifecycle", () => {
     const body = document.querySelector(".chat-bubble-assistant .chat-bubble-body");
     expect(body.textContent).toBe("done");
   });
+
+  it("shows the request model name on the assistant bubble label", () => {
+    installDom();
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-start", {
+        detail: { text: "hello", model: "gemma-4-abliterated" },
+      })
+    );
+    beginAssistantMessage("response");
+    const label = document.querySelector(".chat-bubble-assistant .chat-bubble-label");
+    expect(label.textContent).toBe("gemma-4-abliterated");
+  });
 });
 
 describe("appendToolCall", () => {
-  it("renders a tool bubble with name and args", () => {
+  it("renders a tool bubble with name, args, and document view", () => {
     installDom();
-    appendToolCall("replace_line", '{"line":1,"text":"x"}');
+    appendToolCall("replace_line", '{"line":1,"text":"x"}', {
+      numbered: "     1|   hello",
+      path: null,
+      lines: 1,
+      is_truncated: false,
+      window_start_line: 1,
+      window_end_line: 1,
+    });
     const bubble = document.querySelector(".chat-bubble-tool");
     expect(bubble).not.toBeNull();
-    expect(bubble.textContent).toContain("replace_line");
-    expect(bubble.textContent).toContain("line");
+    expect(bubble.textContent).toContain("Tool call: replace_line");
+    expect(bubble.textContent).toContain("Arguments");
+    expect(bubble.textContent).toContain("Document before tool");
+    expect(bubble.textContent).toContain("hello");
+  });
+});
+
+describe("appendAgentContext", () => {
+  it("renders system prompt and user message sections", () => {
+    installDom();
+    appendAgentContext("User request: fix it", "You are a helper.");
+    const bubble = document.querySelector(".chat-bubble-context");
+    expect(bubble).not.toBeNull();
+    expect(bubble.textContent).toContain("LLM input");
+    expect(bubble.textContent).toContain("System prompt");
+    expect(bubble.textContent).toContain("You are a helper.");
+    expect(bubble.textContent).toContain("User message (as sent to model)");
+    expect(bubble.textContent).toContain("User request: fix it");
   });
 });
 
 describe("appendToolResult", () => {
-  it("renders a success result", () => {
+  it("renders a success result with JSON payload", () => {
     installDom();
-    appendToolResult("replace_line", { ok: true, changed: true });
+    appendToolResult("replace_line", { ok: true, changed: true, line: 1 });
     const bubble = document.querySelector(".chat-bubble-tool-result");
     expect(bubble).not.toBeNull();
-    expect(bubble.textContent).toContain("applied");
+    expect(bubble.textContent).toContain("document updated");
+    expect(bubble.textContent).toContain("Return value (as sent to model)");
+    expect(bubble.textContent).toContain('"ok": true');
   });
 
   it("renders an error result", () => {
     installDom();
     appendToolResult("insert_text", { ok: false, error: "invalid line" });
     const bubble = document.querySelector(".chat-bubble-tool-result");
-    expect(bubble.textContent).toContain("error");
+    expect(bubble.textContent).toContain("failed");
     expect(bubble.textContent).toContain("invalid line");
   });
 
@@ -198,6 +237,17 @@ describe("appendToolResult", () => {
     appendToolResult("replace_line", { ok: true, changed: false });
     const bubble = document.querySelector(".chat-bubble-tool-result");
     expect(bubble.textContent).toContain("no change");
+  });
+
+  it("summarizes get_document results", () => {
+    installDom();
+    appendToolResult("get_document", {
+      ok: true,
+      lines: 12,
+      content: "     1|   line",
+    });
+    const bubble = document.querySelector(".chat-bubble-tool-result");
+    expect(bubble.textContent).toContain("returned document snapshot");
   });
 });
 
@@ -239,6 +289,18 @@ describe("editor:chat-complete event", () => {
     const bubble = _internal.getPendingUserBubble();
     expect(bubble).not.toBeNull();
     expect(bubble.classList.contains("chat-bubble-failed")).toBe(true);
+  });
+});
+
+describe("token count", () => {
+  it("displays token count with capital T", () => {
+    installDom();
+    recordExchange("hello world", "hi there");
+    document.dispatchEvent(
+      new CustomEvent("editor:chat-complete", { detail: { success: true } })
+    );
+    const text = document.getElementById("chat-token-count").textContent;
+    expect(text).toMatch(/Tokens$/);
   });
 });
 

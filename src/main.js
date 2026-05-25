@@ -15,8 +15,9 @@
 //   - No theme/font/color controls (Req 17.3):
 //       no theme/dark-mode/font/color UI in index.html, menu.js,
 //       or settings_modal.js. Settings_Modal exposes only the six
-//       Req 10.2 fields (api_url, model, temperature, max_tokens,
-//       replace_mode, system_prompt).
+//       Req 10.2 modal fields (api_url, model, tab_spaces). Inference
+//       params (temperature, max_tokens, system prompt, etc.) live in
+//       the inference panel.
 //   - No plugin loader (Req 17.4):
 //       no dynamic `import()` of user-supplied modules, no
 //       plugin manifest, no extension registry.
@@ -89,6 +90,7 @@ import * as settingsModal from "./settings_modal.js";
 import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
 import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
+import * as inferencePanel from "./inference_panel.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
 // dropped into the WebView console) can reach it without a separate
@@ -536,6 +538,7 @@ export async function bootstrap() {
   setAiMenuEnabled(false);
 
   chat.initializeChat();
+  await inferencePanel.initializeInferencePanel();
 
   // 3. Initial Status_Bar: Untitled, 0 chars, model fallback per
   // Req 9.4 ("(no model)"). The model name is replaced after settings

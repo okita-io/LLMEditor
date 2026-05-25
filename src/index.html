@@ -40,27 +40,34 @@
 
     <div id="content-split">
       <aside id="chat-panel" aria-label="AI Chat">
-        <div class="chat-header">
-          <span class="chat-title">AI Chat</span>
-          <span id="chat-model" class="chat-model">(no model)</span>
-        </div>
         <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
         <div class="chat-input-area">
-          <textarea
-            id="chat-input"
-            rows="3"
-            placeholder="Ask the model to edit your document..."
-            spellcheck="false"
-          ></textarea>
-          <div class="chat-actions">
+          <div class="chat-input-frame">
+            <textarea
+              id="chat-input"
+              rows="3"
+              placeholder="Ask the model to edit your document..."
+              spellcheck="false"
+            ></textarea>
+            <div class="chat-send-bar">
+              <select id="chat-model-picker" class="chat-model-picker" aria-label="Model">
+                <option value="">(no model)</option>
+              </select>
+              <button id="chat-send" type="button">Send</button>
+            </div>
+          </div>
+          <div class="chat-control-bar">
             <button id="chat-clear" type="button">Clear</button>
-            <span id="chat-token-count" class="chat-token-count">0 tokens</span>
-            <button id="chat-send" type="button" class="primary">Send</button>
+            <span id="chat-token-count" class="chat-token-count">0 Tokens</span>
           </div>
         </div>
       </aside>
 
-      <div id="split-divider" aria-hidden="true"></div>
+      <div id="inference-divider" class="split-divider" aria-hidden="true"></div>
+
+      <aside id="inference-panel" aria-label="Inference settings"></aside>
+
+      <div id="split-divider" class="split-divider" aria-hidden="true"></div>
 
       <main id="document-editor">
         <div id="column-ruler" class="column-ruler" aria-hidden="true">
@@ -95,6 +102,7 @@
     <script type="module" src="editor.js"></script>
     <script type="module" src="editor_chrome.js"></script>
     <script type="module" src="chat.js"></script>
+    <script type="module" src="inference_panel.js"></script>
     <script type="module" src="status_bar.js"></script>
     <script type="module" src="settings_modal.js"></script>
     <script type="module" src="menu.js"></script>

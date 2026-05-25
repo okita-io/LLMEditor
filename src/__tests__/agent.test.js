@@ -61,6 +61,9 @@ describe("runAgent", () => {
     expect(result).toBe("Line 1 updated.");
     expect(bufferEl.value).toBe("updated");
     expect(onToolCall).toHaveBeenCalledTimes(1);
+    expect(onToolCall.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ numbered: expect.any(String), lines: 1 })
+    );
     expect(onAssistantMessage).toHaveBeenCalledWith("Line 1 updated.");
     expect(api.agentTurn).toHaveBeenCalledTimes(2);
   });
@@ -218,6 +221,56 @@ describe("runAgent", () => {
     });
 
     expect(onUnappliedEditsHint).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits agent context and assistant tool-turn content to callbacks", async () => {
+    vi.mocked(api.agentTurn)
+      .mockResolvedValueOnce({
+        content: "I'll inspect the document first.",
+        tool_calls: [
+          {
+            id: "call_1",
+            name: "get_document",
+            arguments: "{}",
+          },
+        ],
+        finish_reason: "tool_calls",
+      })
+      .mockResolvedValueOnce({
+        content: "Done.",
+        tool_calls: [],
+        finish_reason: "stop",
+      })
+      .mockResolvedValueOnce({
+        content: "Done.",
+        tool_calls: [],
+        finish_reason: "stop",
+      });
+
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "hello";
+    const onAgentContext = vi.fn();
+    const onAssistantToolTurn = vi.fn();
+
+    await runAgent({
+      userMessage: "read doc",
+      settings: { system_prompt: "" },
+      bufferEl,
+      contextAnchor: null,
+      callbacks: {
+        getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+        onAgentContext,
+        onAssistantToolTurn,
+      },
+    });
+
+    expect(onAgentContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userContent: "read doc",
+        systemPrompt: expect.stringContaining("context window"),
+      })
+    );
+    expect(onAssistantToolTurn).toHaveBeenCalledWith("I'll inspect the document first.");
   });
 });
 

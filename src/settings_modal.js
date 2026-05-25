@@ -44,6 +44,7 @@
 import * as api from "./api.js";
 import * as editor from "./editor.js";
 import * as chat from "./chat.js";
+import * as inferencePanel from "./inference_panel.js";
 
 /* -------------------------------------------------------------------- */
 /* Validation bounds (mirror Rust `Settings::validate_field`).          */
@@ -82,14 +83,19 @@ const REPLACE_MODE_VALUES = Object.freeze([
 /** Allowed values for `tab_spaces`. */
 const TAB_SPACES_VALUES = Object.freeze([2, 4]);
 
+/** Fields edited in the AI Settings modal (inference-only fields live in the panel). */
+const MODAL_FIELDS = Object.freeze([
+  "api_url",
+  "model",
+  "replace_mode",
+  "tab_spaces",
+]);
+
 /** Default settings used when `loadSettings()` rejects on open. */
 const FALLBACK_DEFAULTS = Object.freeze({
   api_url: "http://localhost:1234/v1/chat/completions",
   model: "local-model",
-  temperature: 0.2,
-  max_tokens: 2048,
   replace_mode: "replace_document",
-  system_prompt: "",
   tab_spaces: 4,
 });
 
@@ -303,15 +309,7 @@ export function validateField(name, rawValue) {
 export function validateAll(input) {
   const errors = new Map();
   const values = {};
-  for (const field of [
-    "api_url",
-    "model",
-    "temperature",
-    "max_tokens",
-    "replace_mode",
-    "system_prompt",
-    "tab_spaces",
-  ]) {
+  for (const field of MODAL_FIELDS) {
     const result = validateField(field, input ? input[field] : undefined);
     if (result.ok) {
       values[field] = result.value;
@@ -434,24 +432,6 @@ function ensureModalBuilt() {
   modelErr.dataset.field = "model";
   form.appendChild(modelErr);
 
-  addField("settings-temperature", "temperature", "Temperature", () => {
-    const i = document.createElement("input");
-    i.type = "number";
-    i.step = "0.1";
-    i.min = "0";
-    i.max = "2";
-    return i;
-  });
-
-  addField("settings-max-tokens", "max_tokens", "Max Tokens", () => {
-    const i = document.createElement("input");
-    i.type = "number";
-    i.step = "1";
-    i.min = String(MAX_TOKENS_MIN);
-    i.max = String(MAX_TOKENS_MAX);
-    return i;
-  });
-
   addField("settings-tab-spaces", "tab_spaces", "Tab → Spaces", () => {
     const sel = document.createElement("select");
     for (const value of TAB_SPACES_VALUES) {
@@ -461,10 +441,6 @@ function ensureModalBuilt() {
       sel.appendChild(opt);
     }
     return sel;
-  });
-
-  addField("settings-system-prompt", "system_prompt", "System Prompt", () => {
-    return document.createElement("textarea");
   });
 
   // Footer with modal-level error span and the two buttons.
@@ -531,10 +507,7 @@ function readFormValues() {
   return {
     api_url: getInputValue("settings-api-url"),
     model: getInputValue("settings-model"),
-    temperature: getInputValue("settings-temperature"),
-    max_tokens: getInputValue("settings-max-tokens"),
     replace_mode: "replace_document",
-    system_prompt: getInputValue("settings-system-prompt"),
     tab_spaces: getInputValue("settings-tab-spaces"),
   };
 }
@@ -577,13 +550,10 @@ function applySettingsToForm(settings) {
   const merged = { ...FALLBACK_DEFAULTS, ...(settings || {}) };
   setInputValue("settings-api-url", merged.api_url);
   setInputValue("settings-model", merged.model);
-  setInputValue("settings-temperature", merged.temperature);
-  setInputValue("settings-max-tokens", merged.max_tokens);
   const tabSpaces = TAB_SPACES_VALUES.includes(Number(merged.tab_spaces))
     ? merged.tab_spaces
     : FALLBACK_DEFAULTS.tab_spaces;
   setInputValue("settings-tab-spaces", tabSpaces);
-  setInputValue("settings-system-prompt", merged.system_prompt);
 }
 
 function setFieldError(field, text) {
@@ -742,17 +712,25 @@ async function onSubmit() {
   }
 
   try {
-    await api.saveSettings(result.values);
-    editor.applyEditorSettings(result.values);
+    let current = {};
+    try {
+      current = await api.loadSettings();
+    } catch {
+      current = {};
+    }
+    const payload = { ...current, ...result.values };
+    await api.saveSettings(payload);
+    editor.applyEditorSettings(payload);
+    await inferencePanel.refreshInferencePanel();
     // Propagate the new model name to the status bar and chat panel
     // so the UI reflects the change without requiring a restart.
-    if (typeof result.values.model === "string") {
-      chat.setModelName(result.values.model);
+    if (typeof payload.model === "string") {
+      chat.setModelName(payload.model);
       // Notify main.js to update its statusState.model via custom event.
       if (typeof document !== "undefined" && typeof CustomEvent === "function") {
         document.dispatchEvent(
           new CustomEvent("settings:model-changed", {
-            detail: { model: result.values.model },
+            detail: { model: payload.model },
           })
         );
       }

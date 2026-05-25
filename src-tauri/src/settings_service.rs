@@ -302,6 +302,20 @@ const FIELDS: &[&str] = &[
     "replace_mode",
     "system_prompt",
     "tab_spaces",
+    "limit_response_length",
+    "context_overflow_policy",
+    "stop_strings",
+    "top_k",
+    "repeat_penalty_enabled",
+    "repeat_penalty",
+    "presence_penalty_enabled",
+    "presence_penalty",
+    "top_p_enabled",
+    "top_p",
+    "min_p_enabled",
+    "min_p",
+    "structured_output_enabled",
+    "structured_output",
 ];
 
 /// Take each known field from `obj` if present and valid; fall back to
@@ -464,6 +478,7 @@ mod tests {
             replace_mode: ReplaceMode::InsertAtCursor,
             system_prompt: "You are a helpful editor.".into(),
             tab_spaces: 4,
+            ..Settings::default()
         };
         fs::write(
             dir.path().join("settings.json"),
@@ -592,6 +607,7 @@ mod tests {
             replace_mode: ReplaceMode::ReplaceSelection,
             system_prompt: "be terse".into(),
             tab_spaces: 2,
+            ..Settings::default()
         };
         save_to(dir.path(), &s).expect("save");
 

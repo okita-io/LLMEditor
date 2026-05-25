@@ -37,6 +37,10 @@ vi.mock("../api.js", () => {
   };
 });
 
+vi.mock("../inference_panel.js", () => ({
+  refreshInferencePanel: vi.fn().mockResolvedValue(undefined),
+}));
+
 import * as api from "../api.js";
 import {
   open,
@@ -285,49 +289,32 @@ describe("validateField — tab_spaces", () => {
 });
 
 describe("validateAll", () => {
-  it("returns the normalized values when every field is valid", () => {
+  it("returns the normalized values when every modal field is valid", () => {
     const r = validateAll({
       api_url: "http://localhost:1234/v1",
       model: "m",
-      temperature: "0.5",
-      max_tokens: "1024",
       replace_mode: "insert_at_cursor",
-      system_prompt: "prompt",
       tab_spaces: "2",
     });
     expect(r.ok).toBe(true);
     expect(r.values).toEqual({
       api_url: "http://localhost:1234/v1",
       model: "m",
-      temperature: 0.5,
-      max_tokens: 1024,
       replace_mode: "insert_at_cursor",
-      system_prompt: "prompt",
       tab_spaces: 2,
     });
   });
 
-  it("collects every offending field into the errors map", () => {
+  it("collects every offending modal field into the errors map", () => {
     const r = validateAll({
       api_url: "ftp://nope",
       model: "",
-      temperature: 9,
-      max_tokens: 0,
       replace_mode: "wrong",
-      system_prompt: "x".repeat(32_769),
       tab_spaces: 3,
     });
     expect(r.ok).toBe(false);
     const fields = Array.from(r.errors.keys()).sort();
-    expect(fields).toEqual([
-      "api_url",
-      "max_tokens",
-      "model",
-      "replace_mode",
-      "system_prompt",
-      "tab_spaces",
-      "temperature",
-    ]);
+    expect(fields).toEqual(["api_url", "model", "replace_mode", "tab_spaces"]);
   });
 });
 
@@ -346,14 +333,14 @@ describe("open()", () => {
     // Inputs from Req 11.2
     expect(document.querySelector("#settings-api-url")).not.toBeNull();
     expect(document.querySelector("#settings-model")).not.toBeNull();
-    expect(document.querySelector("#settings-temperature")).not.toBeNull();
-    expect(document.querySelector("#settings-max-tokens")).not.toBeNull();
-    expect(document.querySelector("#settings-system-prompt")).not.toBeNull();
+    expect(document.querySelector("#settings-max-tokens")).toBeNull();
+    expect(document.querySelector("#settings-temperature")).toBeNull();
+    expect(document.querySelector("#settings-system-prompt")).toBeNull();
     expect(document.querySelector('button[data-action="cancel"]')).not.toBeNull();
     expect(document.querySelector('button[data-action="save"]')).not.toBeNull();
   });
 
-  it("pre-populates every field from api.loadSettings (Req 11.1)", async () => {
+  it("pre-populates modal fields from api.loadSettings (Req 11.1)", async () => {
     api.loadSettings.mockResolvedValueOnce({
       api_url: "https://api.example.test/v1",
       model: "remote-model",
@@ -368,9 +355,6 @@ describe("open()", () => {
     expect(api.loadSettings).toHaveBeenCalledTimes(1);
     expect(inputValue("settings-api-url")).toBe("https://api.example.test/v1");
     expect(inputValue("settings-model")).toBe("remote-model");
-    expect(inputValue("settings-temperature")).toBe("1.3");
-    expect(inputValue("settings-max-tokens")).toBe("5000");
-    expect(inputValue("settings-system-prompt")).toBe("Be terse.");
   });
 
   it("falls back to defaults and surfaces the load error when loadSettings rejects", async () => {
@@ -455,13 +439,16 @@ describe("close()", () => {
 /* -------------------- Save flow (Req 11.3, 11.4-11.7, 11.9) ---------- */
 
 describe("Save with all-valid fields (Req 11.3)", () => {
-  it("calls api.saveSettings with the normalized values and closes", async () => {
+  it("calls api.saveSettings with merged settings and closes", async () => {
+    api.loadSettings.mockResolvedValue({
+      ...VALID_SETTINGS,
+      temperature: 0.7,
+      system_prompt: "Be terse.",
+      max_tokens: 1024,
+    });
     await open();
     setInputValue("settings-api-url", "https://api.example.test/v1");
     setInputValue("settings-model", "remote-model");
-    setInputValue("settings-temperature", "0.7");
-    setInputValue("settings-max-tokens", "1024");
-    setInputValue("settings-system-prompt", "Be terse.");
 
     await submitForm();
 
@@ -481,33 +468,6 @@ describe("Save with all-valid fields (Req 11.3)", () => {
 });
 
 describe("Save with invalid fields (Req 11.4-11.7)", () => {
-  it("renders the inline error next to temperature and does NOT save", async () => {
-    await open();
-    setInputValue("settings-temperature", "9");
-
-    await submitForm();
-
-    expect(api.saveSettings).not.toHaveBeenCalled();
-    const span = document.querySelector(
-      '.field-error[data-field="temperature"]'
-    );
-    expect(span.textContent.length).toBeGreaterThan(0);
-    expect(isModalOpen()).toBe(true);
-  });
-
-  it("renders the inline error next to max_tokens and does NOT save", async () => {
-    await open();
-    setInputValue("settings-max-tokens", "0");
-
-    await submitForm();
-
-    expect(api.saveSettings).not.toHaveBeenCalled();
-    const span = document.querySelector(
-      '.field-error[data-field="max_tokens"]'
-    );
-    expect(span.textContent.length).toBeGreaterThan(0);
-  });
-
   it("renders the inline error next to api_url and does NOT save", async () => {
     await open();
     setInputValue("settings-api-url", "ftp://nope");
@@ -538,7 +498,7 @@ describe("Save with invalid fields (Req 11.4-11.7)", () => {
     await open();
     setInputValue("settings-api-url", "ftp://nope");
     setInputValue("settings-model", "");
-    setInputValue("settings-temperature", "-1");
+    setInputValue("settings-tab-spaces", "3");
 
     await submitForm();
 
@@ -550,7 +510,7 @@ describe("Save with invalid fields (Req 11.4-11.7)", () => {
       document.querySelector('.field-error[data-field="model"]').textContent
     ).not.toBe("");
     expect(
-      document.querySelector('.field-error[data-field="temperature"]').textContent
+      document.querySelector('.field-error[data-field="tab_spaces"]').textContent
     ).not.toBe("");
   });
 
@@ -578,7 +538,7 @@ describe("Save failure (Req 11.9)", () => {
     );
     await open();
     setInputValue("settings-model", "edited-model");
-    setInputValue("settings-temperature", "0.5");
+    setInputValue("settings-api-url", "https://edited.example.test/v1");
 
     await submitForm();
 
@@ -590,7 +550,7 @@ describe("Save failure (Req 11.9)", () => {
     );
     // Edits are preserved
     expect(inputValue("settings-model")).toBe("edited-model");
-    expect(inputValue("settings-temperature")).toBe("0.5");
+    expect(inputValue("settings-api-url")).toBe("https://edited.example.test/v1");
   });
 
   it("propagates a string rejection reason verbatim", async () => {

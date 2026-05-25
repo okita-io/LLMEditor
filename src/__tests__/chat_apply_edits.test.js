@@ -12,11 +12,12 @@ import {
 function installDom() {
   document.body.innerHTML = `
     <aside id="chat-panel">
-      <span id="chat-model"></span>
       <div id="chat-messages"></div>
+      <select id="chat-model-picker"><option value="">(no model)</option></select>
       <textarea id="chat-input"></textarea>
       <button id="chat-send"></button>
       <button id="chat-clear"></button>
+      <span id="chat-token-count"></span>
     </aside>
     <textarea id="buffer"></textarea>
   `;

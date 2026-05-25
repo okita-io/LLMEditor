@@ -58,8 +58,10 @@ function parseToolArguments(args) {
 /**
  * @typedef {object} AgentCallbacks
  * @property {() => { text: string, path?: string|null, contextAnchor?: ReturnType<typeof buildContextWindow>|null }} getDocumentContext
- * @property {(toolCall: { id: string, name: string, arguments: string }) => void} [onToolCall]
+ * @property {(toolCall: { id: string, name: string, arguments: string }, documentView: Record<string, unknown>) => void} [onToolCall]
  * @property {(toolCall: { id: string, name: string, arguments: string }, result: Record<string, unknown>) => void} [onToolResult]
+ * @property {(payload: { userContent: string, systemPrompt: string }) => void} [onAgentContext]
+ * @property {(content: string) => void} [onAssistantToolTurn]
  * @property {(text: string) => void} [onAssistantMessage]
  * @property {(bufferEl: HTMLTextAreaElement, name: string, result: Record<string, unknown>) => void} [applyMutatingResult]
  * @property {(text: string) => void} [onUnappliedEditsHint]
@@ -134,6 +136,11 @@ export async function runAgent(options) {
     { role: "user", content: userContent },
   ];
 
+  callbacks.onAgentContext?.({
+    userContent,
+    systemPrompt: buildSystemPrompt(settings),
+  });
+
   let finalText = "";
   let mutatingToolCount = 0;
   let applyNudgeUsed = false;
@@ -155,8 +162,25 @@ export async function runAgent(options) {
       };
       messages.push(assistantMessage);
 
+      if (typeof response.content === "string" && response.content.length > 0) {
+        callbacks.onAssistantToolTurn?.(response.content);
+      }
+
       for (const toolCall of response.tool_calls) {
-        callbacks.onToolCall?.(toolCall);
+        const ctx = getContext();
+        const docSnap = editorTools.getDocumentSnapshot(
+          ctx.text,
+          ctx.path ?? null,
+          ctx.contextAnchor ?? null
+        );
+        callbacks.onToolCall?.(toolCall, {
+          numbered: docSnap.numbered,
+          path: docSnap.path,
+          lines: docSnap.lines,
+          is_truncated: docSnap.is_truncated,
+          window_start_line: docSnap.window_start_line,
+          window_end_line: docSnap.window_end_line,
+        });
 
         let parsedArgs = {};
         let parseError = null;
@@ -167,7 +191,6 @@ export async function runAgent(options) {
           parsedArgs = {};
         }
 
-        const ctx = getContext();
         const result = parseError
           ? { ok: false, error: parseError, changed: false }
           : editorTools.executeTool(toolCall.name, parsedArgs, ctx);

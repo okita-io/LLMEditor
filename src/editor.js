@@ -935,9 +935,9 @@ async function _sendAgentPrompt(text, options = {}) {
   agentActive = true;
   _beginAgentEdit();
   if (retry) {
-    _emitChatRetry(text);
+    _emitChatRetry(text, settings.model);
   } else {
-    _emitChatStart(text);
+    _emitChatStart(text, settings.model);
   }
   _emitStatus("Thinking…");
 
@@ -962,11 +962,17 @@ async function _sendAgentPrompt(text, options = {}) {
           path: currentPath,
           contextAnchor: _buildLiveContextAnchor(),
         }),
-        onToolCall: (toolCall) => {
-          _emitToolCall(toolCall);
+        onToolCall: (toolCall, documentView) => {
+          _emitToolCall(toolCall, documentView);
         },
         onToolResult: (toolCall, result) => {
           _emitToolResult(toolCall, result);
+        },
+        onAgentContext: ({ userContent, systemPrompt }) => {
+          _emitAgentContext(userContent, systemPrompt);
+        },
+        onAssistantToolTurn: (content) => {
+          _emitAssistantToolTurn(content);
         },
         onAssistantMessage: (message) => {
           _emitChatAssistant(message);
@@ -1216,15 +1222,21 @@ function _emitStatus(message) {
 
 /**
  * @param {string} text
+ * @param {string} [model]
  * @returns {void}
  */
-function _emitChatStart(text) {
+function _emitChatStart(text, model) {
   if (typeof document === "undefined" || typeof CustomEvent !== "function") {
     return;
   }
   try {
     document.dispatchEvent(
-      new CustomEvent("editor:chat-start", { detail: { text } })
+      new CustomEvent("editor:chat-start", {
+        detail: {
+          text,
+          model: typeof model === "string" ? model : "",
+        },
+      })
     );
   } catch {
     /* ignore */
@@ -1265,15 +1277,21 @@ function _emitChatComplete(detail = { success: true }) {
 
 /**
  * @param {string} text
+ * @param {string} [model]
  * @returns {void}
  */
-function _emitChatRetry(text) {
+function _emitChatRetry(text, model) {
   if (typeof document === "undefined" || typeof CustomEvent !== "function") {
     return;
   }
   try {
     document.dispatchEvent(
-      new CustomEvent("editor:chat-retry", { detail: { text } })
+      new CustomEvent("editor:chat-retry", {
+        detail: {
+          text,
+          model: typeof model === "string" ? model : "",
+        },
+      })
     );
   } catch {
     /* ignore */
@@ -1281,16 +1299,65 @@ function _emitChatRetry(text) {
 }
 
 /**
- * @param {{ name: string, arguments: string }} toolCall
+ * @param {string} userContent
+ * @param {string} systemPrompt
  * @returns {void}
  */
-function _emitToolCall(toolCall) {
+function _emitAgentContext(userContent, systemPrompt) {
   if (typeof document === "undefined" || typeof CustomEvent !== "function") {
     return;
   }
   try {
     document.dispatchEvent(
-      new CustomEvent("editor:tool-call", { detail: { toolCall } })
+      new CustomEvent("editor:agent-context", {
+        detail: {
+          userContent: typeof userContent === "string" ? userContent : "",
+          systemPrompt: typeof systemPrompt === "string" ? systemPrompt : "",
+        },
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {string} content
+ * @returns {void}
+ */
+function _emitAssistantToolTurn(content) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:agent-tool-turn", {
+        detail: { content: typeof content === "string" ? content : "" },
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ id?: string, name: string, arguments: string }} toolCall
+ * @param {Record<string, unknown>} [documentView]
+ * @returns {void}
+ */
+function _emitToolCall(toolCall, documentView) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:tool-call", {
+        detail: {
+          toolCall,
+          documentView:
+            documentView && typeof documentView === "object" ? documentView : null,
+        },
+      })
     );
   } catch {
     /* ignore */

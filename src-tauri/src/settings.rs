@@ -64,6 +64,37 @@ pub const SYSTEM_PROMPT_MAX_CHARS: usize = 32_768;
 /// Allowed values for `tab_spaces` (spaces inserted when Tab is pressed).
 pub const TAB_SPACES_VALUES: [u8; 2] = [2, 4];
 
+/// Inclusive minimum value of `top_k`.
+pub const TOP_K_MIN: u32 = 0;
+/// Inclusive maximum value of `top_k`.
+pub const TOP_K_MAX: u32 = 1000;
+
+/// Inclusive minimum value of `repeat_penalty`.
+pub const REPEAT_PENALTY_MIN: f64 = 0.0;
+/// Inclusive maximum value of `repeat_penalty`.
+pub const REPEAT_PENALTY_MAX: f64 = 2.0;
+
+/// Inclusive minimum value of `presence_penalty`.
+pub const PRESENCE_PENALTY_MIN: f64 = -2.0;
+/// Inclusive maximum value of `presence_penalty`.
+pub const PRESENCE_PENALTY_MAX: f64 = 2.0;
+
+/// Inclusive minimum value of `top_p`.
+pub const TOP_P_MIN: f64 = 0.0;
+/// Inclusive maximum value of `top_p`.
+pub const TOP_P_MAX: f64 = 1.0;
+
+/// Inclusive minimum value of `min_p`.
+pub const MIN_P_MIN: f64 = 0.0;
+/// Inclusive maximum value of `min_p`.
+pub const MIN_P_MAX: f64 = 1.0;
+
+/// Inclusive maximum length of `stop_strings` in Unicode code points.
+pub const STOP_STRINGS_MAX_CHARS: usize = 4096;
+
+/// Inclusive maximum length of `structured_output` in Unicode code points.
+pub const STRUCTURED_OUTPUT_MAX_CHARS: usize = 32_768;
+
 // -----------------------------------------------------------------------------
 // FieldError
 // -----------------------------------------------------------------------------
@@ -114,6 +145,21 @@ pub enum ReplaceMode {
     ReplaceDocument,
 }
 
+/// LM Studio context overflow policy (maps to `contextOverflowPolicy` in API).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextOverflowPolicy {
+    TruncateMiddle,
+    RollingWindow,
+    StopAtLimit,
+}
+
+impl Default for ContextOverflowPolicy {
+    fn default() -> Self {
+        Self::TruncateMiddle
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Settings
 // -----------------------------------------------------------------------------
@@ -139,6 +185,64 @@ pub struct Settings {
     pub system_prompt: String,
     /// Spaces inserted when the user presses Tab in the editor (2 or 4).
     pub tab_spaces: u8,
+    /// When true, include `max_tokens` in LM Studio requests.
+    #[serde(default)]
+    pub limit_response_length: bool,
+    /// How LM Studio handles context window overflow.
+    #[serde(default)]
+    pub context_overflow_policy: ContextOverflowPolicy,
+    /// Comma- or newline-separated stop strings forwarded to the API.
+    #[serde(default)]
+    pub stop_strings: String,
+    /// Top-K sampling limit (0 disables).
+    #[serde(default = "default_top_k")]
+    pub top_k: u32,
+    /// When true, include `repeat_penalty` in LM Studio requests.
+    #[serde(default = "default_true")]
+    pub repeat_penalty_enabled: bool,
+    #[serde(default = "default_repeat_penalty")]
+    pub repeat_penalty: f64,
+    /// When true, include `presence_penalty` in LM Studio requests.
+    #[serde(default)]
+    pub presence_penalty_enabled: bool,
+    #[serde(default)]
+    pub presence_penalty: f64,
+    /// When true, include `top_p` in LM Studio requests.
+    #[serde(default = "default_true")]
+    pub top_p_enabled: bool,
+    #[serde(default = "default_top_p")]
+    pub top_p: f64,
+    /// When true, include `min_p` in LM Studio requests.
+    #[serde(default = "default_true")]
+    pub min_p_enabled: bool,
+    #[serde(default = "default_min_p")]
+    pub min_p: f64,
+    /// When true, attach `response_format` from `structured_output`.
+    #[serde(default)]
+    pub structured_output_enabled: bool,
+    /// JSON schema (object) or full `response_format` payload as text.
+    #[serde(default)]
+    pub structured_output: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_top_k() -> u32 {
+    40
+}
+
+fn default_repeat_penalty() -> f64 {
+    1.1
+}
+
+fn default_top_p() -> f64 {
+    0.95
+}
+
+fn default_min_p() -> f64 {
+    0.05
 }
 
 impl Default for Settings {
@@ -154,6 +258,20 @@ impl Default for Settings {
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: String::new(),
             tab_spaces: 4,
+            limit_response_length: true,
+            context_overflow_policy: ContextOverflowPolicy::TruncateMiddle,
+            stop_strings: String::new(),
+            top_k: default_top_k(),
+            repeat_penalty_enabled: true,
+            repeat_penalty: default_repeat_penalty(),
+            presence_penalty_enabled: false,
+            presence_penalty: 0.0,
+            top_p_enabled: true,
+            top_p: default_top_p(),
+            min_p_enabled: true,
+            min_p: default_min_p(),
+            structured_output_enabled: false,
+            structured_output: String::new(),
         }
     }
 }
@@ -187,6 +305,27 @@ impl Settings {
             errs.push(e);
         }
         if let Err(e) = validate_tab_spaces(self.tab_spaces) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_top_k(self.top_k) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_repeat_penalty(self.repeat_penalty) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_presence_penalty(self.presence_penalty) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_top_p(self.top_p) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_min_p(self.min_p) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_stop_strings(&self.stop_strings) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_structured_output(&self.structured_output) {
             errs.push(e);
         }
 
@@ -236,6 +375,62 @@ impl Settings {
             "tab_spaces" => {
                 let n = expect_u32(name, value)?;
                 validate_tab_spaces_u32(n)
+            }
+            "limit_response_length" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "context_overflow_policy" => {
+                let s = expect_string(name, value)?;
+                validate_context_overflow_policy_str(s)
+            }
+            "stop_strings" => {
+                let s = expect_string(name, value)?;
+                validate_stop_strings(s)
+            }
+            "top_k" => {
+                let n = expect_u32(name, value)?;
+                validate_top_k(n)
+            }
+            "repeat_penalty_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "repeat_penalty" => {
+                let n = expect_f64(name, value)?;
+                validate_repeat_penalty(n)
+            }
+            "presence_penalty_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "presence_penalty" => {
+                let n = expect_f64(name, value)?;
+                validate_presence_penalty(n)
+            }
+            "top_p_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "top_p" => {
+                let n = expect_f64(name, value)?;
+                validate_top_p(n)
+            }
+            "min_p_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "min_p" => {
+                let n = expect_f64(name, value)?;
+                validate_min_p(n)
+            }
+            "structured_output_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "structured_output" => {
+                let s = expect_string(name, value)?;
+                validate_structured_output(s)
             }
             other => Err(FieldError::new(other, "unknown settings field")),
         }
@@ -380,6 +575,109 @@ fn validate_tab_spaces_u32(n: u32) -> Result<(), FieldError> {
     )
 }
 
+fn validate_context_overflow_policy_str(s: &str) -> Result<(), FieldError> {
+    match s {
+        "truncate_middle" | "rolling_window" | "stop_at_limit" => Ok(()),
+        _ => Err(FieldError::new(
+            "context_overflow_policy",
+            "must be one of truncate_middle, rolling_window, stop_at_limit",
+        )),
+    }
+}
+
+fn validate_top_k(n: u32) -> Result<(), FieldError> {
+    if n > TOP_K_MAX {
+        return Err(FieldError::new(
+            "top_k",
+            format!("must be an integer between {} and {}", TOP_K_MIN, TOP_K_MAX),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_repeat_penalty(n: f64) -> Result<(), FieldError> {
+    if !n.is_finite() {
+        return Err(FieldError::new("repeat_penalty", "must be a finite number"));
+    }
+    if n < REPEAT_PENALTY_MIN || n > REPEAT_PENALTY_MAX {
+        return Err(FieldError::new(
+            "repeat_penalty",
+            format!(
+                "must be between {:.1} and {:.1}",
+                REPEAT_PENALTY_MIN, REPEAT_PENALTY_MAX
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_presence_penalty(n: f64) -> Result<(), FieldError> {
+    if !n.is_finite() {
+        return Err(FieldError::new("presence_penalty", "must be a finite number"));
+    }
+    if n < PRESENCE_PENALTY_MIN || n > PRESENCE_PENALTY_MAX {
+        return Err(FieldError::new(
+            "presence_penalty",
+            format!(
+                "must be between {:.1} and {:.1}",
+                PRESENCE_PENALTY_MIN, PRESENCE_PENALTY_MAX
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_top_p(n: f64) -> Result<(), FieldError> {
+    if !n.is_finite() {
+        return Err(FieldError::new("top_p", "must be a finite number"));
+    }
+    if n < TOP_P_MIN || n > TOP_P_MAX {
+        return Err(FieldError::new(
+            "top_p",
+            format!("must be between {:.2} and {:.2}", TOP_P_MIN, TOP_P_MAX),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_min_p(n: f64) -> Result<(), FieldError> {
+    if !n.is_finite() {
+        return Err(FieldError::new("min_p", "must be a finite number"));
+    }
+    if n < MIN_P_MIN || n > MIN_P_MAX {
+        return Err(FieldError::new(
+            "min_p",
+            format!("must be between {:.2} and {:.2}", MIN_P_MIN, MIN_P_MAX),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_stop_strings(s: &str) -> Result<(), FieldError> {
+    let len = char_len(s);
+    if len > STOP_STRINGS_MAX_CHARS {
+        return Err(FieldError::new(
+            "stop_strings",
+            format!("must be at most {} characters", STOP_STRINGS_MAX_CHARS),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_structured_output(s: &str) -> Result<(), FieldError> {
+    let len = char_len(s);
+    if len > STRUCTURED_OUTPUT_MAX_CHARS {
+        return Err(FieldError::new(
+            "structured_output",
+            format!(
+                "must be at most {} characters",
+                STRUCTURED_OUTPUT_MAX_CHARS
+            ),
+        ));
+    }
+    Ok(())
+}
+
 // -----------------------------------------------------------------------------
 // JSON-shape helpers (private)
 // -----------------------------------------------------------------------------
@@ -402,6 +700,14 @@ fn expect_u32(name: &str, v: &serde_json::Value) -> Result<u32, FieldError> {
         .as_u64()
         .ok_or_else(|| FieldError::new(name, "expected a non-negative integer"))?;
     u32::try_from(n).map_err(|_| FieldError::new(name, "value does not fit in a 32-bit integer"))
+}
+
+fn expect_bool(name: &str, v: &serde_json::Value) -> Result<(), FieldError> {
+    if v.is_boolean() {
+        Ok(())
+    } else {
+        Err(FieldError::new(name, "expected a boolean"))
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -495,6 +801,7 @@ mod tests {
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: "x".repeat(SYSTEM_PROMPT_MAX_CHARS + 1),
             tab_spaces: 4,
+            ..Settings::default()
         };
         let errs = s.validate().expect_err("expected validation errors");
         let fields: Vec<&str> = errs.iter().map(|e| e.field.as_str()).collect();
@@ -747,6 +1054,7 @@ mod prop_tests {
                         replace_mode,
                         system_prompt,
                         tab_spaces,
+                        ..Settings::default()
                     }
                 },
             )

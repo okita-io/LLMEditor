@@ -56,7 +56,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::error::LlmError;
-use crate::settings::Settings;
+use crate::settings::{ContextOverflowPolicy, Settings};
 
 // -----------------------------------------------------------------------------
 // Process-wide reqwest::Client
@@ -119,13 +119,98 @@ pub fn build_body(text: &str, s: &Settings, stream: bool) -> Value {
     }
     messages.push(json!({ "role": "user", "content": text }));
 
-    json!({
-        "model": s.model,
-        "messages": messages,
-        "temperature": s.temperature,
-        "max_tokens": s.max_tokens,
-        "stream": stream,
-    })
+    let mut body = serde_json::Map::new();
+    body.insert("model".into(), json!(s.model));
+    body.insert("messages".into(), json!(messages));
+    body.insert("temperature".into(), json!(s.temperature));
+    body.insert("stream".into(), json!(stream));
+    apply_inference_settings(&mut body, s);
+    Value::Object(body)
+}
+
+/// Append LM Studio inference parameters to a chat-completions body.
+fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Settings) {
+    if s.limit_response_length {
+        body.insert("max_tokens".into(), json!(s.max_tokens));
+    }
+
+    let stops = parse_stop_strings(&s.stop_strings);
+    if !stops.is_empty() {
+        body.insert("stop".into(), json!(stops));
+    }
+
+    if s.top_k > 0 {
+        body.insert("top_k".into(), json!(s.top_k));
+    }
+
+    if s.repeat_penalty_enabled {
+        body.insert("repeat_penalty".into(), json!(s.repeat_penalty));
+    }
+
+    if s.presence_penalty_enabled {
+        body.insert("presence_penalty".into(), json!(s.presence_penalty));
+    }
+
+    if s.top_p_enabled {
+        body.insert("top_p".into(), json!(s.top_p));
+    }
+
+    if s.min_p_enabled {
+        body.insert("min_p".into(), json!(s.min_p));
+    }
+
+    if s.structured_output_enabled {
+        if let Some(response_format) = build_response_format(&s.structured_output) {
+            body.insert("response_format".into(), response_format);
+        }
+    }
+
+    body.insert(
+        "lmstudio".into(),
+        json!({
+            "contextOverflowPolicy": context_overflow_policy_api_value(s.context_overflow_policy),
+        }),
+    );
+}
+
+fn context_overflow_policy_api_value(policy: ContextOverflowPolicy) -> &'static str {
+    match policy {
+        ContextOverflowPolicy::TruncateMiddle => "truncateMiddle",
+        ContextOverflowPolicy::RollingWindow => "rollingWindow",
+        ContextOverflowPolicy::StopAtLimit => "stopAtLimit",
+    }
+}
+
+fn parse_stop_strings(raw: &str) -> Vec<String> {
+    raw.split(|c| c == ',' || c == '\n')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn build_response_format(raw: &str) -> Option<Value> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let parsed: Value = serde_json::from_str(trimmed).ok()?;
+    if parsed.get("json_schema").is_some() {
+        return Some(parsed);
+    }
+    if parsed.get("type").and_then(|v| v.as_str()) == Some("json_schema") {
+        return Some(parsed);
+    }
+
+    Some(json!({
+        "type": "json_schema",
+        "json_schema": {
+            "name": "structured_output",
+            "strict": true,
+            "schema": parsed,
+        }
+    }))
 }
 
 // -----------------------------------------------------------------------------
@@ -221,14 +306,17 @@ pub struct AgentTurnResponse {
 
 /// Build a chat-completions body with `tools` for the agent loop.
 pub fn build_agent_body(messages: &[Value], s: &Settings) -> Value {
-    json!({
-        "model": s.model,
-        "messages": messages,
-        "temperature": s.temperature,
-        "max_tokens": s.max_tokens,
-        "stream": false,
-        "tools": crate::editor_tools::tool_definitions(),
-    })
+    let mut body = serde_json::Map::new();
+    body.insert("model".into(), json!(s.model));
+    body.insert("messages".into(), json!(messages));
+    body.insert("temperature".into(), json!(s.temperature));
+    body.insert("stream".into(), json!(false));
+    body.insert(
+        "tools".into(),
+        json!(crate::editor_tools::tool_definitions()),
+    );
+    apply_inference_settings(&mut body, s);
+    Value::Object(body)
 }
 
 /// Parse `choices[0].message` for assistant text and/or tool calls.
@@ -1092,18 +1180,15 @@ async fn run_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::{ReplaceMode, Settings};
+    use crate::settings::Settings;
     use serde_json::json;
 
     fn settings_with_prompt(system_prompt: &str) -> Settings {
         Settings {
-            api_url: "http://localhost:1234/v1/chat/completions".into(),
-            model: "local-model".into(),
+            system_prompt: system_prompt.into(),
             temperature: 0.4,
             max_tokens: 256,
-            replace_mode: ReplaceMode::ReplaceDocument,
-            system_prompt: system_prompt.into(),
-            tab_spaces: 4,
+            ..Settings::default()
         }
     }
 
@@ -1167,20 +1252,42 @@ mod tests {
         assert_eq!(messages.last().unwrap()["content"], text);
     }
 
-    /// Top-level body keys match the design exactly: `model`, `messages`,
-    /// `temperature`, `max_tokens`, `stream`. No extra keys, no missing
-    /// keys.
+    /// Top-level body always includes core keys plus LM Studio inference params.
     #[test]
-    fn build_body_has_exact_top_level_key_set() {
+    fn build_body_includes_core_and_inference_keys() {
         let s = settings_with_prompt("sys");
         let body = build_body("user", &s, false);
         let obj = body.as_object().expect("body is an object");
-        let mut keys: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
-        keys.sort();
-        assert_eq!(
-            keys,
-            vec!["max_tokens", "messages", "model", "stream", "temperature"]
-        );
+        assert!(obj.contains_key("model"));
+        assert!(obj.contains_key("messages"));
+        assert!(obj.contains_key("temperature"));
+        assert!(obj.contains_key("stream"));
+        assert!(obj.contains_key("max_tokens"));
+        assert!(obj.contains_key("top_k"));
+        assert!(obj.contains_key("repeat_penalty"));
+        assert!(obj.contains_key("top_p"));
+        assert!(obj.contains_key("min_p"));
+        assert!(obj.contains_key("lmstudio"));
+    }
+
+    #[test]
+    fn build_body_omits_max_tokens_when_limit_disabled() {
+        let mut s = settings_with_prompt("");
+        s.limit_response_length = false;
+        let body = build_body("user", &s, false);
+        assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn build_body_includes_stop_strings_and_structured_output() {
+        let mut s = settings_with_prompt("");
+        s.stop_strings = "END,\nSTOP".into();
+        s.structured_output_enabled = true;
+        s.structured_output = r#"{"type":"object","properties":{"answer":{"type":"string"}}}"#
+            .into();
+        let body = build_body("user", &s, false);
+        assert_eq!(body["stop"], json!(["END", "STOP"]));
+        assert_eq!(body["response_format"]["type"], "json_schema");
     }
 
     // ---- extract_first_choice_content ------------------------------------
