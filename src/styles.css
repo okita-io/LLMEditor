@@ -202,19 +202,20 @@ body {
 }
 
 #chat-panel {
-  flex: 0 0 460px;
+  flex: 0 0 500px;
   display: flex;
   flex-direction: column;
   min-width: 260px;
+  max-width: 500px;
   background: var(--bg-secondary);
 }
 
 #inference-panel {
-  flex: 0 0 320px;
+  flex: 0 0 500px;
   display: flex;
   flex-direction: column;
-  min-width: 220px;
-  max-width: 320px;
+  min-width: 300px;
+  max-width: 500px;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
