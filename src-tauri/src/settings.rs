@@ -145,7 +145,8 @@ pub enum ReplaceMode {
     ReplaceDocument,
 }
 
-/// LM Studio context overflow policy (maps to `contextOverflowPolicy` in API).
+/// LM Studio context overflow policy (maps to `context_overflow_policy` in the
+/// `lmstudio` extension object on `/v1/chat/completions`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextOverflowPolicy {

@@ -9,8 +9,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as editor from "../../editor.js";
 import {
+  getLastRequestBody,
   getSmokeConfig,
   installLmStudioBridge,
+  liveAgentTurn,
   pingLmStudio,
 } from "./helpers/lm_studio_client.js";
 import {
@@ -43,6 +45,41 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     const { model } = await installLmStudioBridge(config);
     expect(model).toBeTruthy();
   });
+
+  it("sends inference settings on POST /v1/chat/completions", async () => {
+    const { settings } = await installLmStudioBridge(config, {
+      settings: {
+        stop_strings: "SMOKE_STOP",
+        context_overflow_policy: "rolling_window",
+        top_k: 40,
+        repeat_penalty: 1.15,
+        top_p: 0.9,
+        min_p: 0.05,
+        limit_response_length: true,
+        max_tokens: 512,
+      },
+    });
+
+    await liveAgentTurn(
+      [{ role: "user", content: "Reply with exactly: OK" }],
+      settings,
+      config
+    );
+
+    const body = getLastRequestBody();
+    expect(body).toBeTruthy();
+    expect(body.stop).toEqual(["SMOKE_STOP"]);
+    expect(body.lmstudio).toEqual({ context_overflow_policy: "rollingWindow" });
+    expect(body.lmstudio.contextOverflowPolicy).toBeUndefined();
+    expect(body.top_k).toBe(40);
+    expect(body.repeat_penalty).toBe(1.15);
+    expect(body.top_p).toBe(0.9);
+    expect(body.min_p).toBe(0.05);
+    expect(body.max_tokens).toBe(512);
+    expect(body.temperature).toBe(config.temperature);
+    expect(Array.isArray(body.tools)).toBe(true);
+    expect(body.tools.length).toBeGreaterThan(0);
+  }, config.timeoutMs);
 
   it("replace_line: edits a selected line via chat agent", async () => {
     const doc = "header\nREPLACE_ME\nfooter";

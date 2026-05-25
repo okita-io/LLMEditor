@@ -129,6 +129,15 @@ pub fn build_body(text: &str, s: &Settings, stream: bool) -> Value {
 }
 
 /// Append LM Studio inference parameters to a chat-completions body.
+///
+/// OpenAI-compatible fields (`top_k`, `top_p`, `repeat_penalty`, …) are sent
+/// at the top level per LM Studio's `/v1/chat/completions` docs. LM
+/// Studio-specific knobs use the documented `lmstudio` extension object; HTTP
+/// keys are snake_case (`context_overflow_policy`) while enum values are
+/// camelCase (`truncateMiddle`, …) per lmstudio-js shared types.
+///
+/// `min_p` is not on the OpenAI-compat supported-parameter list but is
+/// honored by LM Studio's v1 server in practice — best-effort only.
 fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Settings) {
     if s.limit_response_length {
         body.insert("max_tokens".into(), json!(s.max_tokens));
@@ -168,7 +177,7 @@ fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Setti
     body.insert(
         "lmstudio".into(),
         json!({
-            "contextOverflowPolicy": context_overflow_policy_api_value(s.context_overflow_policy),
+            "context_overflow_policy": context_overflow_policy_api_value(s.context_overflow_policy),
         }),
     );
 }
@@ -1180,7 +1189,7 @@ async fn run_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::Settings;
+    use crate::settings::{ContextOverflowPolicy, Settings};
     use serde_json::json;
 
     fn settings_with_prompt(system_prompt: &str) -> Settings {
@@ -1268,6 +1277,18 @@ mod tests {
         assert!(obj.contains_key("top_p"));
         assert!(obj.contains_key("min_p"));
         assert!(obj.contains_key("lmstudio"));
+    }
+
+    #[test]
+    fn build_body_lmstudio_uses_snake_case_context_overflow_policy() {
+        let mut s = settings_with_prompt("");
+        s.context_overflow_policy = ContextOverflowPolicy::RollingWindow;
+        let body = build_body("user", &s, false);
+        assert_eq!(
+            body["lmstudio"]["context_overflow_policy"],
+            "rollingWindow"
+        );
+        assert!(body["lmstudio"].get("contextOverflowPolicy").is_none());
     }
 
     #[test]

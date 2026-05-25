@@ -4,10 +4,31 @@
 // Live LM Studio HTTP client for smoke tests (no Tauri required).
 
 import { editorToolDefinitions } from "../../../editor_tool_schemas.js";
+import {
+  buildLmStudioChatBody,
+  defaultLmStudioSettings,
+} from "../../../lm_studio_inference.js";
 import { fetchLmStudioModels, lmStudioBaseUrl, lmStudioModelsUrl } from "../../../lm_studio_models.js";
 
 const DEFAULT_API_URL = "http://10.0.1.2:1234/v1/chat/completions";
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/** @type {Record<string, unknown> | null} */
+let lastRequestBody = null;
+
+/**
+ * @returns {Record<string, unknown> | null}
+ */
+export function getLastRequestBody() {
+  return lastRequestBody;
+}
+
+/**
+ * @returns {void}
+ */
+export function clearLastRequestBody() {
+  lastRequestBody = null;
+}
 
 /**
  * @returns {{
@@ -84,25 +105,30 @@ export async function resolveSmokeModel(apiUrl, preferredModel) {
 
 /**
  * @param {Array<Record<string, unknown>>} messages
+ * @param {Record<string, unknown>} settings
  * @param {ReturnType<typeof getSmokeConfig>} config
  * @returns {Promise<{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null }>}
  */
-export async function liveAgentTurn(messages, config) {
-  const model = await resolveSmokeModel(config.apiUrl, config.model);
+export async function liveAgentTurn(messages, settings, config) {
+  const model =
+    typeof settings.model === "string" && settings.model.length > 0
+      ? settings.model
+      : await resolveSmokeModel(config.apiUrl, config.model);
+
+  const mergedSettings = { ...settings, model, api_url: config.apiUrl };
+  const body = buildLmStudioChatBody(mergedSettings, messages, {
+    stream: false,
+    tools: editorToolDefinitions(),
+  });
+  lastRequestBody = body;
+
   try {
     const res = await fetchWithTimeout(
       config.apiUrl,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: config.temperature,
-          max_tokens: config.maxTokens,
-          stream: false,
-          tools: editorToolDefinitions(),
-        }),
+        body: JSON.stringify(body),
       },
       config.timeoutMs
     );
@@ -166,24 +192,29 @@ export function parseAgentTurnResponse(envelope) {
  * Install a Tauri IPC stub that forwards agent_turn to live LM Studio.
  *
  * @param {ReturnType<typeof getSmokeConfig>} config
+ * @param {{ settings?: Record<string, unknown> }} [options]
  * @returns {Promise<{ settings: object, model: string }>}
  */
-export async function installLmStudioBridge(config) {
+export async function installLmStudioBridge(config, options = {}) {
+  clearLastRequestBody();
   const model = await resolveSmokeModel(config.apiUrl, config.model);
-  const settings = {
+  const settings = defaultLmStudioSettings({
     api_url: config.apiUrl,
     model,
     temperature: config.temperature,
     max_tokens: config.maxTokens,
-    replace_mode: "replace_document",
-    system_prompt: "",
-  };
+    ...(options.settings || {}),
+  });
 
   globalThis.__TAURI__ = {
     core: {
       invoke: async (cmd, args) => {
         if (cmd === "agent_turn") {
-          return liveAgentTurn(args.messages, config);
+          const turnSettings =
+            args && typeof args.settings === "object"
+              ? { ...settings, ...args.settings }
+              : settings;
+          return liveAgentTurn(args.messages, turnSettings, config);
         }
         if (cmd === "load_settings") {
           return settings;
