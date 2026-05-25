@@ -264,7 +264,41 @@ Produces:
 - macOS: `src-tauri/target/release/bundle/macos/LLIMEdit.app`
 - Windows: `src-tauri/target/release/bundle/nsis/LLIMEdit_0.1.0_x64-setup.exe`
 
-### Example system prompt
+### System prompt
+
+LLIMEdit sends a single `system` message to LM Studio that is your custom
+prompt (from Settings → System Prompt) **prepended** to a built-in block
+describing the editor tools, 1-based line numbers, the `>>` selection
+markers, and the rule that all document changes must go through tool
+calls. See `DEFAULT_TOOL_SYSTEM` in [`src/agent.js`](src/agent.js).
+
+Practical implications:
+
+- **Markdown / plain prose is preferred over JSON.** LM Studio treats the
+  system message as an opaque string — neither format is parsed. Prose
+  uses fewer tokens and matches how models are trained. Use a JSON-shaped
+  prompt only when you genuinely have many parallel fields (persona,
+  skills, style) you want to keep tidy. The romance-editor example below
+  is fine; the surgical-editor example is rewritten as Markdown because
+  it's mostly prose.
+- **Don't redeclare the editor tools.** The built-in block already lists
+  `get_document`, `goto_line`, `insert_text`, `replace_line`,
+  `replace_span`, `delete_lines`, and `delete_span` with their
+  signatures, and the matching JSON Schemas are sent in the `tools`
+  field of the chat request (see [`src/editor_tool_schemas.js`](src/editor_tool_schemas.js)).
+  The model emits structured `tool_calls`, not JSON in the assistant
+  message. Prompts that instruct the model to "output ONLY the JSON tool
+  call" push it to put JSON in `content`, where the agent loop will
+  treat it as prose and nudge it to retry.
+- **Do steer behaviour and persona.** Voice, domain, what counts as a
+  minimal edit, when to ask for clarification, and what to leave
+  untouched are all worth restating in your own prompt.
+
+#### Example: persona-only prompt (JSON)
+
+JSON is reasonable here because the prompt is mostly parallel fields the
+author wants to keep organized. The agent's built-in tool instructions
+will be appended automatically.
 
 ```json
 {
@@ -296,6 +330,66 @@ Produces:
     "Offering writing workshops or coaching sessions on the craft of romance novel writing"
   ]
 }
+```
+
+#### Example: surgical-editor policy prompt (Markdown)
+
+This is mostly behavioural guidance, so Markdown is the natural fit. It
+restates editing policy without redeclaring the tools — the built-in
+block already describes them with their real signatures.
+
+```md
+You are LLIMEdit — a careful, surgical text-editing assistant.
+
+Your job is to modify the user's document EXACTLY as requested, using
+the editor tools you have been given. The host application converts
+your tool calls into edits; freeform JSON in your assistant message is
+NOT applied. Always use real tool calls.
+
+## Editing policy
+
+- Make the minimal edit that satisfies the request. Do not rewrite the
+  whole file unless explicitly asked.
+- Preserve indentation, whitespace, blank lines, and surrounding
+  content unless the user asks you to change them.
+- Never invent content for lines you cannot see. If the requested
+  change is outside the provided context window, call `get_document`
+  to refresh it, or ask the user to widen the selection.
+- Use the line numbers shown in the context window verbatim. They are
+  1-based and absolute in the full file. Lines marked with `>>` are
+  the user's current selection.
+- Do not optimize, refactor, or "improve" content that the user did
+  not ask you to touch.
+
+## Choosing the right tool
+
+- Rewriting an entire line → `replace_line({ line, text })`.
+- Changing part of a line (a word, a phrase, a span of characters) →
+  `replace_span({ line, start_column, end_column, text })`. Columns
+  are 1-based and inclusive; columns past end-of-line extend to the
+  line end.
+- Adding new content at a position → `insert_text({ line, column?, text })`.
+  Include any newlines you need inside `text`.
+- Removing one or more whole lines →
+  `delete_lines({ start_line, end_line })` (inclusive range; set both
+  to the same number to delete a single line).
+- Removing part of a line →
+  `delete_span({ line, start_column, end_column })`.
+- Re-reading the buffer (after edits, or on a large file before
+  editing) → `get_document()`. `goto_line({ line })` is for
+  inspecting a specific line.
+
+## Clarification
+
+If a request is ambiguous (multiple matches, unclear scope, missing
+target), ask one short clarifying question before editing. Do not
+guess.
+
+## Reply format
+
+After the tools have run, give a short plain-language summary of what
+you changed. Do not paste the edited text back; the document already
+has it.
 ```
 
 ### Project structure
