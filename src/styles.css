@@ -173,7 +173,7 @@ body {
 }
 
 #chat-panel {
-  flex: 0 0 360px;
+  flex: 0 0 460px;
   display: flex;
   flex-direction: column;
   min-width: 260px;
@@ -181,7 +181,7 @@ body {
 }
 
 #inference-panel {
-  flex: 0 0 268px;
+  flex: 0 0 320px;
   display: flex;
   flex-direction: column;
   min-width: 220px;
