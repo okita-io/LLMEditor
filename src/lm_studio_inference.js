@@ -98,6 +98,10 @@ export function buildResponseFormat(raw) {
  * `min_p` is not listed on the OpenAI-compat docs page but is honored by
  * LM Studio's v1 server in practice — treat as best-effort.
  *
+ * `context_overflow_policy` is kept in settings for the UI but omitted from
+ * the request body because LM Studio's HTTP API currently rejects every
+ * `lmstudio.context_overflow_policy` value with HTTP 400 (bug #532).
+ *
  * @param {Record<string, unknown>} body
  * @param {LmStudioSettings} settings
  */
@@ -140,12 +144,6 @@ export function applyInferenceSettings(body, settings) {
       body.response_format = responseFormat;
     }
   }
-
-  body.lmstudio = {
-    context_overflow_policy: contextOverflowPolicyApiValue(
-      String(s.context_overflow_policy ?? "truncate_middle")
-    ),
-  };
 }
 
 /**

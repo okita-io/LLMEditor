@@ -35,11 +35,10 @@ describe("buildResponseFormat", () => {
 });
 
 describe("applyInferenceSettings", () => {
-  it("uses snake_case lmstudio.context_overflow_policy for v1 API", () => {
+  it("omits lmstudio extension because LM Studio HTTP rejects it today", () => {
     const body = { model: "m", messages: [], temperature: 0.2, stream: false };
     applyInferenceSettings(body, defaultLmStudioSettings());
-    expect(body.lmstudio).toEqual({ context_overflow_policy: "truncateMiddle" });
-    expect(body.lmstudio.contextOverflowPolicy).toBeUndefined();
+    expect(body.lmstudio).toBeUndefined();
   });
 
   it("includes OpenAI-compat sampling fields when enabled", () => {
@@ -78,6 +77,6 @@ describe("buildLmStudioChatBody", () => {
     expect(body.model).toBe("test-model");
     expect(body.messages).toBe(messages);
     expect(body.tools).toHaveLength(1);
-    expect(body.lmstudio.context_overflow_policy).toBe("truncateMiddle");
+    expect(body.lmstudio).toBeUndefined();
   });
 });

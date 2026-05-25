@@ -233,10 +233,10 @@ This launches the app with hot-reload for the frontend (`src/`) and recompiles t
 # Backend (Rust) — 127 tests
 cargo test --manifest-path src-tauri/Cargo.toml
 
-# Frontend (Vitest + jsdom) — unit tests
+# Frontend (Vitest + jsdom) — unit tests (smoke tests excluded; see below)
 npm test
 
-# Live LM Studio smoke tests (requires a running server + tool-capable model)
+# Live LM Studio smoke tests (separate Vitest config; not picked up by npm test)
 LLM_SMOKE=1 LLM_API_URL=http://10.0.1.5:1234/v1/chat/completions npm run test:smoke
 ```
 

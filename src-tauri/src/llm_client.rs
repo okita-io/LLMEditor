@@ -56,7 +56,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::error::LlmError;
-use crate::settings::{ContextOverflowPolicy, Settings};
+use crate::settings::Settings;
 
 // -----------------------------------------------------------------------------
 // Process-wide reqwest::Client
@@ -138,6 +138,11 @@ pub fn build_body(text: &str, s: &Settings, stream: bool) -> Value {
 ///
 /// `min_p` is not on the OpenAI-compat supported-parameter list but is
 /// honored by LM Studio's v1 server in practice — best-effort only.
+///
+/// `context_overflow_policy` is persisted in settings for the UI but is not
+/// sent on the wire: LM Studio's HTTP API currently rejects every
+/// `lmstudio.context_overflow_policy` value with HTTP 400 (see
+/// lmstudio-ai/lmstudio-bug-tracker#532).
 fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Settings) {
     if s.limit_response_length {
         body.insert("max_tokens".into(), json!(s.max_tokens));
@@ -172,21 +177,6 @@ fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Setti
         if let Some(response_format) = build_response_format(&s.structured_output) {
             body.insert("response_format".into(), response_format);
         }
-    }
-
-    body.insert(
-        "lmstudio".into(),
-        json!({
-            "context_overflow_policy": context_overflow_policy_api_value(s.context_overflow_policy),
-        }),
-    );
-}
-
-fn context_overflow_policy_api_value(policy: ContextOverflowPolicy) -> &'static str {
-    match policy {
-        ContextOverflowPolicy::TruncateMiddle => "truncateMiddle",
-        ContextOverflowPolicy::RollingWindow => "rollingWindow",
-        ContextOverflowPolicy::StopAtLimit => "stopAtLimit",
     }
 }
 
@@ -1276,19 +1266,15 @@ mod tests {
         assert!(obj.contains_key("repeat_penalty"));
         assert!(obj.contains_key("top_p"));
         assert!(obj.contains_key("min_p"));
-        assert!(obj.contains_key("lmstudio"));
+        assert!(!obj.contains_key("lmstudio"));
     }
 
     #[test]
-    fn build_body_lmstudio_uses_snake_case_context_overflow_policy() {
+    fn build_body_omits_lmstudio_context_overflow_extension() {
         let mut s = settings_with_prompt("");
         s.context_overflow_policy = ContextOverflowPolicy::RollingWindow;
         let body = build_body("user", &s, false);
-        assert_eq!(
-            body["lmstudio"]["context_overflow_policy"],
-            "rollingWindow"
-        );
-        assert!(body["lmstudio"].get("contextOverflowPolicy").is_none());
+        assert!(body.get("lmstudio").is_none());
     }
 
     #[test]

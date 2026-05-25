@@ -11,5 +11,7 @@ export default defineConfig({
     include: ["src/__tests__/smoke/**/*.test.js"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
+    // Smoke tests live under src/__tests__/smoke/ and are excluded from the
+    // default vitest.config.js include set. Use: npm run test:smoke
   },
 });

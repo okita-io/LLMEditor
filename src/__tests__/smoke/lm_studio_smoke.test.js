@@ -69,8 +69,7 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     const body = getLastRequestBody();
     expect(body).toBeTruthy();
     expect(body.stop).toEqual(["SMOKE_STOP"]);
-    expect(body.lmstudio).toEqual({ context_overflow_policy: "rollingWindow" });
-    expect(body.lmstudio.contextOverflowPolicy).toBeUndefined();
+    expect(body.lmstudio).toBeUndefined();
     expect(body.top_k).toBe(40);
     expect(body.repeat_penalty).toBe(1.15);
     expect(body.top_p).toBe(0.9);
