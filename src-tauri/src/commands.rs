@@ -295,10 +295,11 @@ pub async fn call_llm(text: String, settings: Settings) -> Result<String, String
 /// stops requesting tools.
 #[tauri::command]
 pub async fn agent_turn(
+    app: tauri::AppHandle,
     messages: Vec<serde_json::Value>,
     settings: Settings,
 ) -> Result<llm_client::AgentTurnResponse, String> {
-    llm_client::agent_turn(messages, &settings)
+    llm_client::agent_turn(&app, messages, &settings)
         .await
         .map_err(<LlmError as Into<String>>::into)
 }

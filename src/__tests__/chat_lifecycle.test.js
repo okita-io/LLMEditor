@@ -202,10 +202,19 @@ describe("appendToolCall", () => {
 describe("appendAgentContext", () => {
   it("renders system prompt and user message sections", () => {
     installDom();
-    appendAgentContext("User request: fix it", "You are a helper.");
+    appendAgentContext({
+      userContent: "User request: fix it",
+      systemPrompt: "You are a helper.",
+      inferenceSummary: "Model: test-model",
+      requestBody: { model: "test-model", messages: [] },
+      messagesJson: "[]",
+      priorTurnsSummary: "(none — first message in session)",
+    });
     const bubble = document.querySelector(".chat-bubble-context");
     expect(bubble).not.toBeNull();
     expect(bubble.textContent).toContain("LLM input");
+    expect(bubble.textContent).toContain("LM Studio settings");
+    expect(bubble.textContent).toContain("Outgoing request body");
     expect(bubble.textContent).toContain("System prompt");
     expect(bubble.textContent).toContain("You are a helper.");
     expect(bubble.textContent).toContain("User message (as sent to model)");

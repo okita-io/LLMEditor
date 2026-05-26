@@ -311,6 +311,8 @@ pub struct AgentTurnResponse {
     pub content: Option<String>,
     pub tool_calls: Vec<ToolCallOut>,
     pub finish_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
 }
 
 /// Build a chat-completions body with `tools` for the agent loop.
@@ -328,6 +330,205 @@ pub fn build_agent_body(messages: &[Value], s: &Settings) -> Value {
     Value::Object(body)
 }
 
+// -----------------------------------------------------------------------------
+// agent_stream — SSE accumulator for streaming agent turns
+// -----------------------------------------------------------------------------
+
+mod agent_stream {
+    use std::collections::BTreeMap;
+
+    use serde::Deserialize;
+
+    use super::{AgentTurnResponse, ToolCallOut};
+
+    #[derive(Default)]
+    struct PartialToolCall {
+        id: String,
+        name: String,
+        arguments: String,
+    }
+
+    pub struct AgentStreamAccumulator {
+        content: String,
+        reasoning: String,
+        tool_calls: BTreeMap<usize, PartialToolCall>,
+        finish_reason: Option<String>,
+    }
+
+    impl AgentStreamAccumulator {
+        pub fn new() -> Self {
+            Self {
+                content: String::new(),
+                reasoning: String::new(),
+                tool_calls: BTreeMap::new(),
+                finish_reason: None,
+            }
+        }
+
+        pub fn into_response(self) -> AgentTurnResponse {
+            let tool_calls = self
+                .tool_calls
+                .into_values()
+                .filter(|tc| !tc.id.is_empty() && !tc.name.is_empty())
+                .map(|tc| ToolCallOut {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: tc.arguments,
+                })
+                .collect();
+
+            let content = if self.content.is_empty() {
+                None
+            } else {
+                Some(self.content)
+            };
+
+            let reasoning = if self.reasoning.is_empty() {
+                None
+            } else {
+                Some(self.reasoning)
+            };
+
+            AgentTurnResponse {
+                content,
+                tool_calls,
+                finish_reason: self.finish_reason,
+                reasoning,
+            }
+        }
+    }
+
+    pub enum AgentStreamEvent {
+        ReasoningToken(String),
+    }
+
+    #[derive(Deserialize)]
+    struct ChunkEnvelope {
+        choices: Vec<ChunkChoice>,
+    }
+
+    #[derive(Deserialize)]
+    struct ChunkChoice {
+        delta: ChunkDelta,
+        finish_reason: Option<String>,
+    }
+
+    #[derive(Deserialize, Default)]
+    struct ChunkDelta {
+        content: Option<String>,
+        reasoning: Option<String>,
+        reasoning_content: Option<String>,
+        tool_calls: Option<Vec<ToolCallDelta>>,
+    }
+
+    #[derive(Deserialize)]
+    struct ToolCallDelta {
+        index: Option<usize>,
+        id: Option<String>,
+        function: Option<ToolCallFunctionDelta>,
+    }
+
+    #[derive(Deserialize)]
+    struct ToolCallFunctionDelta {
+        name: Option<String>,
+        arguments: Option<String>,
+    }
+
+    pub fn find_double_newline(buf: &[u8]) -> Option<usize> {
+        buf.windows(2).position(|w| w == b"\n\n")
+    }
+
+    pub fn extract_data_payload(record: &str) -> Option<&str> {
+        let trimmed = record.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        trimmed.strip_prefix("data:").map(str::trim_start)
+    }
+
+    pub fn push_chunk(
+        acc: &mut AgentStreamAccumulator,
+        payload: &str,
+    ) -> Result<Vec<AgentStreamEvent>, ()> {
+        let env: ChunkEnvelope = serde_json::from_str(payload).map_err(|_| ())?;
+        let choice = env.choices.into_iter().next().ok_or(())?;
+
+        if let Some(fr) = choice.finish_reason {
+            acc.finish_reason = Some(fr);
+        }
+
+        let delta = choice.delta;
+        let mut events = Vec::new();
+
+        for fragment in [delta.reasoning, delta.reasoning_content] {
+            if let Some(text) = fragment {
+                if !text.is_empty() {
+                    acc.reasoning.push_str(&text);
+                    events.push(AgentStreamEvent::ReasoningToken(text));
+                }
+            }
+        }
+
+        if let Some(content) = delta.content {
+            if !content.is_empty() {
+                acc.content.push_str(&content);
+            }
+        }
+
+        if let Some(tool_calls) = delta.tool_calls {
+            for tc in tool_calls {
+                let index = tc.index.unwrap_or(0);
+                let entry = acc.tool_calls.entry(index).or_default();
+                if let Some(id) = tc.id {
+                    entry.id = id;
+                }
+                if let Some(function) = tc.function {
+                    if let Some(name) = function.name {
+                        entry.name = name;
+                    }
+                    if let Some(args) = function.arguments {
+                        entry.arguments.push_str(&args);
+                    }
+                }
+            }
+        }
+
+        Ok(events)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn push_chunk_accumulates_reasoning_content_and_tools() {
+            let mut acc = AgentStreamAccumulator::new();
+            let events = push_chunk(
+                &mut acc,
+                r#"{"choices":[{"delta":{"reasoning_content":"think "}}]}"#,
+            )
+            .expect("chunk");
+            assert_eq!(events.len(), 1);
+            assert!(matches!(
+                events[0],
+                AgentStreamEvent::ReasoningToken(ref s) if s == "think "
+            ));
+
+            push_chunk(
+                &mut acc,
+                r#"{"choices":[{"delta":{"content":"done","tool_calls":[{"index":0,"id":"c1","function":{"name":"get_document","arguments":"{}"}}]}}]}"#,
+            )
+            .expect("chunk");
+
+            let response = acc.into_response();
+            assert_eq!(response.reasoning.as_deref(), Some("think "));
+            assert_eq!(response.content.as_deref(), Some("done"));
+            assert_eq!(response.tool_calls.len(), 1);
+            assert_eq!(response.tool_calls[0].name, "get_document");
+        }
+    }
+}
+
 /// Parse `choices[0].message` for assistant text and/or tool calls.
 pub fn extract_agent_turn_response(envelope: &Value) -> Option<AgentTurnResponse> {
     let choice = envelope.get("choices")?.as_array()?.first()?;
@@ -338,6 +539,12 @@ pub fn extract_agent_turn_response(envelope: &Value) -> Option<AgentTurnResponse
         Some(Value::String(s)) => Some(s.clone()),
         _ => None,
     };
+    let reasoning = message
+        .get("reasoning")
+        .or_else(|| message.get("reasoning_content"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     let finish_reason = choice
         .get("finish_reason")
         .and_then(|v| v.as_str())
@@ -367,11 +574,100 @@ pub fn extract_agent_turn_response(envelope: &Value) -> Option<AgentTurnResponse
         content,
         tool_calls,
         finish_reason,
+        reasoning,
     })
 }
 
-/// POST a non-streaming tool-enabled chat turn to LM Studio.
+/// POST a streaming tool-enabled chat turn to LM Studio, emitting reasoning
+/// fragments to the frontend as they arrive, then return the assembled turn.
 pub async fn agent_turn(
+    app: &tauri::AppHandle,
+    messages: Vec<Value>,
+    settings: &Settings,
+) -> Result<AgentTurnResponse, LlmError> {
+    match agent_turn_streaming(app, messages.clone(), settings).await {
+        Ok(response) => Ok(response),
+        Err(LlmError::HttpStatus(_)) | Err(LlmError::InvalidResponse) => {
+            agent_turn_blocking(messages, settings).await
+        }
+        Err(err) => Err(err),
+    }
+}
+
+async fn agent_turn_streaming(
+    app: &tauri::AppHandle,
+    messages: Vec<Value>,
+    settings: &Settings,
+) -> Result<AgentTurnResponse, LlmError> {
+    use futures_util::StreamExt;
+
+    use crate::events::emit_llm_reasoning_token;
+
+    let mut body = build_agent_body(&messages, settings);
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("stream".into(), json!(true));
+    }
+
+    let response = http_client()
+        .post(&settings.api_url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(map_request_error)?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(LlmError::HttpStatus(status.as_u16()));
+    }
+
+    let mut byte_stream = response.bytes_stream();
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut acc = agent_stream::AgentStreamAccumulator::new();
+
+    while let Some(chunk) = byte_stream.next().await {
+        let bytes = chunk.map_err(|_| LlmError::ConnectionLost)?;
+        buffer.extend_from_slice(&bytes);
+
+        while let Some(idx) = agent_stream::find_double_newline(&buffer) {
+            let record = std::str::from_utf8(&buffer[..idx])
+                .map_err(|_| LlmError::InvalidResponse)?
+                .to_string();
+            buffer.drain(..idx + 2);
+
+            if let Some(payload) = agent_stream::extract_data_payload(&record) {
+                if payload == "[DONE]" {
+                    return Ok(acc.into_response());
+                }
+
+                let events = agent_stream::push_chunk(&mut acc, payload)
+                    .map_err(|_| LlmError::InvalidResponse)?;
+                for event in events {
+                    let agent_stream::AgentStreamEvent::ReasoningToken(fragment) = event;
+                    let _ = emit_llm_reasoning_token(app, &fragment);
+                }
+            }
+        }
+    }
+
+    if !buffer.is_empty() {
+        if let Ok(record) = std::str::from_utf8(&buffer) {
+            if let Some(payload) = agent_stream::extract_data_payload(record) {
+                if payload != "[DONE]" {
+                    let events = agent_stream::push_chunk(&mut acc, payload)
+                        .map_err(|_| LlmError::InvalidResponse)?;
+                    for event in events {
+                        let agent_stream::AgentStreamEvent::ReasoningToken(fragment) = event;
+                        let _ = emit_llm_reasoning_token(app, &fragment);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(acc.into_response())
+}
+
+async fn agent_turn_blocking(
     messages: Vec<Value>,
     settings: &Settings,
 ) -> Result<AgentTurnResponse, LlmError> {

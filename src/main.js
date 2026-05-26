@@ -346,6 +346,23 @@ async function registerTauriEventListeners() {
     }
   });
 
+  await listen("tauri://llm-reasoning-token", (event) => {
+    try {
+      const fragment = _extractEventPayload(event);
+      if (typeof fragment !== "string" || fragment.length === 0) return;
+      if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+        return;
+      }
+      document.dispatchEvent(
+        new CustomEvent("editor:reasoning-stream-token", {
+          detail: { fragment },
+        })
+      );
+    } catch (e) {
+      console.error("llm-reasoning-token handler failed:", e);
+    }
+  });
+
   // tauri://llm-complete — emitted on stream end, cancellation, or any
   // Req 14 error reason (Req 13.5, 13.7, 14.6). The editor commits the
   // stream group onto undoStack (or skips on n=0 per Req 18.10),

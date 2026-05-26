@@ -123,7 +123,7 @@ export async function streamLlm(text, settings) {
  *
  * @param {Array<Record<string, unknown>>} messages Conversation history.
  * @param {object} settings Current settings snapshot.
- * @returns {Promise<{ content?: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason?: string|null }>}
+ * @returns {Promise<{ content?: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason?: string|null, reasoning?: string|null }>}
  */
 export async function agentTurn(messages, settings) {
   return await getInvoke()("agent_turn", { messages, settings });

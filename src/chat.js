@@ -7,6 +7,7 @@ import * as editor from "./editor.js";
 import * as api from "./api.js";
 import { clearHistory, getHistoryForAgent } from "./chat_history.js";
 import { extractDocumentEdits } from "./document_edits.js";
+import { stringifyRequestBody } from "./agent_request_preview.js";
 
 let messagesEl = null;
 let inputEl = null;
@@ -32,6 +33,12 @@ let modelListLoading = false;
 let activeAssistantBubble = null;
 /** @type {HTMLElement | null} */
 let activeAssistantBody = null;
+/** @type {HTMLElement | null} */
+let activeReasoningBubble = null;
+/** @type {HTMLElement | null} */
+let activeReasoningBody = null;
+/** @type {number} */
+let activeReasoningTurn = 0;
 /** @type {HTMLElement | null} */
 let pendingUserBubble = null;
 
@@ -496,6 +503,9 @@ export function clearMessages() {
   if (messagesEl) messagesEl.replaceChildren();
   activeAssistantBody = null;
   activeAssistantBubble = null;
+  activeReasoningBody = null;
+  activeReasoningBubble = null;
+  activeReasoningTurn = 0;
   pendingUserBubble = null;
   clearHistory();
   updateTokenCount();
@@ -617,12 +627,30 @@ function appendLogSection(bubble, title, content) {
 }
 
 /**
- * @param {string} userContent
- * @param {string} systemPrompt
+ * @param {{
+ *   userContent?: string,
+ *   systemPrompt?: string,
+ *   requestBody?: Record<string, unknown>,
+ *   inferenceSummary?: string,
+ *   priorTurnsSummary?: string,
+ *   messagesJson?: string,
+ * }} payload
  * @returns {void}
  */
-export function appendAgentContext(userContent, systemPrompt) {
+export function appendAgentContext(payload) {
   if (!messagesEl) return;
+
+  const userContent = typeof payload?.userContent === "string" ? payload.userContent : "";
+  const systemPrompt = typeof payload?.systemPrompt === "string" ? payload.systemPrompt : "";
+  const inferenceSummary =
+    typeof payload?.inferenceSummary === "string" ? payload.inferenceSummary : "";
+  const priorTurnsSummary =
+    typeof payload?.priorTurnsSummary === "string" ? payload.priorTurnsSummary : "";
+  const messagesJson = typeof payload?.messagesJson === "string" ? payload.messagesJson : "";
+  const requestBodyText =
+    payload?.requestBody && typeof payload.requestBody === "object"
+      ? stringifyRequestBody(payload.requestBody)
+      : "";
 
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble chat-bubble-context";
@@ -632,17 +660,133 @@ export function appendAgentContext(userContent, systemPrompt) {
   label.textContent = "LLM input";
   bubble.appendChild(label);
 
+  if (inferenceSummary.length > 0) {
+    appendLogSection(bubble, "LM Studio settings", inferenceSummary);
+  }
+  if (requestBodyText.length > 0) {
+    appendLogSection(bubble, "Outgoing request body (POST /v1/chat/completions)", requestBodyText);
+  }
+  if (messagesJson.length > 0) {
+    appendLogSection(bubble, "Messages array", messagesJson);
+  }
+  if (priorTurnsSummary.length > 0) {
+    appendLogSection(bubble, "Chat history (prior turns)", priorTurnsSummary);
+  }
   if (typeof systemPrompt === "string" && systemPrompt.length > 0) {
     appendLogSection(bubble, "System prompt", systemPrompt);
   }
   appendLogSection(
     bubble,
     "User message (as sent to model)",
-    typeof userContent === "string" ? userContent : ""
+    userContent
   );
 
   messagesEl.appendChild(bubble);
   scrollMessagesToBottom();
+}
+
+/**
+ * @param {number} turn
+ * @param {Record<string, unknown>} requestBody
+ * @param {string} [messagesJson]
+ * @returns {void}
+ */
+export function appendAgentTurnRequest(turn, requestBody, messagesJson = "") {
+  if (!messagesEl || turn <= 1) return;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-context chat-bubble-turn-request";
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent = `Agent turn ${turn} → LM Studio`;
+  bubble.appendChild(label);
+
+  appendLogSection(
+    bubble,
+    "Outgoing request body",
+    requestBody && typeof requestBody === "object"
+      ? stringifyRequestBody(requestBody)
+      : ""
+  );
+  if (typeof messagesJson === "string" && messagesJson.length > 0) {
+    appendLogSection(bubble, "Messages array", messagesJson);
+  }
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {number} [turn]
+ * @returns {HTMLElement | null}
+ */
+export function beginReasoningStream(turn = 0) {
+  if (!messagesEl) return null;
+
+  finalizeReasoningStream();
+
+  activeReasoningTurn = Number.isFinite(turn) ? Math.trunc(turn) : 0;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble chat-bubble-reasoning chat-bubble-reasoning-active";
+  if (activeReasoningTurn > 0) {
+    bubble.dataset.turn = String(activeReasoningTurn);
+  }
+
+  const label = document.createElement("div");
+  label.className = "chat-bubble-label";
+  label.textContent =
+    activeReasoningTurn > 0
+      ? `Reasoning (turn ${activeReasoningTurn})`
+      : "Reasoning";
+  bubble.appendChild(label);
+
+  const body = document.createElement("div");
+  body.className = "chat-bubble-body chat-reasoning-body";
+  bubble.appendChild(body);
+
+  messagesEl.appendChild(bubble);
+  scrollMessagesToBottom();
+
+  activeReasoningBubble = bubble;
+  activeReasoningBody = body;
+  return body;
+}
+
+/**
+ * @param {string} fragment
+ * @returns {void}
+ */
+export function appendReasoningFragment(fragment) {
+  if (!activeReasoningBody || typeof fragment !== "string" || fragment.length === 0) {
+    return;
+  }
+  activeReasoningBody.textContent += fragment;
+  scrollMessagesToBottom();
+}
+
+/**
+ * @param {string} [fallbackReasoning]
+ * @returns {void}
+ */
+export function finalizeReasoningStream(fallbackReasoning = "") {
+  if (
+    activeReasoningBody &&
+    activeReasoningBody.textContent?.length === 0 &&
+    typeof fallbackReasoning === "string" &&
+    fallbackReasoning.length > 0
+  ) {
+    activeReasoningBody.textContent = fallbackReasoning;
+  }
+
+  if (activeReasoningBubble) {
+    activeReasoningBubble.classList.remove("chat-bubble-reasoning-active");
+  }
+
+  activeReasoningBody = null;
+  activeReasoningBubble = null;
+  activeReasoningTurn = 0;
 }
 
 /**
@@ -978,17 +1122,58 @@ export function initializeChat() {
     document.addEventListener("editor:agent-context", (event) => {
       const detail =
         event && typeof event === "object" && "detail" in event ? event.detail : null;
-      const userContent =
-        detail && typeof detail === "object" && typeof detail.userContent === "string"
-          ? detail.userContent
+      if (!detail || typeof detail !== "object") return;
+      appendAgentContext(detail);
+    });
+
+    document.addEventListener("editor:agent-turn-request", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const turn =
+        detail && typeof detail === "object" && typeof detail.turn === "number"
+          ? detail.turn
+          : 0;
+      const requestBody =
+        detail && typeof detail === "object" && detail.requestBody
+          ? detail.requestBody
+          : null;
+      const messagesJson =
+        detail && typeof detail === "object" && typeof detail.messagesJson === "string"
+          ? detail.messagesJson
           : "";
-      const systemPrompt =
-        detail && typeof detail === "object" && typeof detail.systemPrompt === "string"
-          ? detail.systemPrompt
-          : "";
-      if (userContent.length > 0 || systemPrompt.length > 0) {
-        appendAgentContext(userContent, systemPrompt);
+      if (turn > 1 && requestBody && typeof requestBody === "object") {
+        appendAgentTurnRequest(turn, requestBody, messagesJson);
       }
+    });
+
+    document.addEventListener("editor:reasoning-stream-start", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const turn =
+        detail && typeof detail === "object" && typeof detail.turn === "number"
+          ? detail.turn
+          : 0;
+      beginReasoningStream(turn);
+    });
+
+    document.addEventListener("editor:reasoning-stream-token", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const fragment =
+        detail && typeof detail === "object" && typeof detail.fragment === "string"
+          ? detail.fragment
+          : "";
+      appendReasoningFragment(fragment);
+    });
+
+    document.addEventListener("editor:reasoning-stream-end", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const reasoning =
+        detail && typeof detail === "object" && typeof detail.reasoning === "string"
+          ? detail.reasoning
+          : "";
+      finalizeReasoningStream(reasoning);
     });
 
     document.addEventListener("editor:agent-tool-turn", (event) => {

@@ -4,6 +4,12 @@
 // Frontend agent loop — multi-turn tool use against LM Studio.
 
 import * as api from "./api.js";
+import {
+  buildAgentRequestPreview,
+  formatInferenceSettingsSummary,
+  formatPriorTurnsForLog,
+  stringifyRequestBody,
+} from "./agent_request_preview.js";
 import * as editorTools from "./editor_tools.js";
 import {
   buildContextWindow,
@@ -27,7 +33,26 @@ The user message includes a context window around their selection or caret when 
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
 Use replace_line to rewrite an entire line, replace_span to change part of a line, insert_text for insertions, delete_lines to remove whole lines, delete_span to remove part of a line (1-based inclusive columns; columns past end-of-line extend to the line end), and goto_line to inspect a specific line.
 You MUST apply every document change with tools before your final reply. Do not paste JSON patches, outline snippets, or replacement text in chat as a substitute for tool calls — the chat panel is not the document.
-After tools succeed, summarize briefly in plain language only. If you proposed new sections (e.g. build-up, threshold), insert them with insert_text or replace_line.`;
+After tools succeed, summarize briefly in plain language only. If you proposed new sections (e.g. build-up, threshold), insert them with insert_text or replace_line.
+
+TOOL CALL EXAMPLES:
+
+To replace line 3 with new content:
+  → call replace_line with {"line": 3, "text": "This is the new line content."}
+
+To insert two new lines after line 10 (inserts at line 11, column 1):
+  → call insert_text with {"line": 11, "column": 1, "text": "First new line\\nSecond new line\\n"}
+
+To delete lines 5 through 7:
+  → call delete_lines with {"start_line": 5, "end_line": 7}
+
+To change "foo" to "bar" on line 4 (columns 10-12):
+  → call replace_span with {"line": 4, "start_column": 10, "end_column": 12, "text": "bar"}
+
+To add content after the last line of the document (e.g. line 38):
+  → call insert_text with {"line": 38, "column": 1, "text": "\\nnew content here"}
+
+IMPORTANT: Use the tool calling mechanism directly. Do NOT write code blocks, Python calls, or function invocations in your message. Call the tools through the API.`;
 
 /**
  * @param {object} settings
@@ -60,7 +85,17 @@ function parseToolArguments(args) {
  * @property {() => { text: string, path?: string|null, contextAnchor?: ReturnType<typeof buildContextWindow>|null }} getDocumentContext
  * @property {(toolCall: { id: string, name: string, arguments: string }, documentView: Record<string, unknown>) => void} [onToolCall]
  * @property {(toolCall: { id: string, name: string, arguments: string }, result: Record<string, unknown>) => void} [onToolResult]
- * @property {(payload: { userContent: string, systemPrompt: string }) => void} [onAgentContext]
+ * @property {(payload: {
+ *   userContent: string,
+ *   systemPrompt: string,
+ *   requestBody: Record<string, unknown>,
+ *   inferenceSummary: string,
+ *   priorTurnsSummary: string,
+ *   messagesJson: string,
+ * }) => void} [onAgentContext]
+ * @property {(payload: { turn: number, requestBody: Record<string, unknown>, messagesJson: string }) => void} [onAgentTurnRequest]
+ * @property {(payload: { turn: number }) => void} [onReasoningStreamStart]
+ * @property {(payload: { turn: number, reasoning?: string|null }) => void} [onReasoningStreamEnd]
  * @property {(content: string) => void} [onAssistantToolTurn]
  * @property {(text: string) => void} [onAssistantMessage]
  * @property {(bufferEl: HTMLTextAreaElement, name: string, result: Record<string, unknown>) => void} [applyMutatingResult]
@@ -136,9 +171,16 @@ export async function runAgent(options) {
     { role: "user", content: userContent },
   ];
 
+  const systemPrompt = buildSystemPrompt(settings);
+  const initialRequestBody = buildAgentRequestPreview(settings, messages);
+
   callbacks.onAgentContext?.({
     userContent,
-    systemPrompt: buildSystemPrompt(settings),
+    systemPrompt,
+    requestBody: initialRequestBody,
+    inferenceSummary: formatInferenceSettingsSummary(settings),
+    priorTurnsSummary: formatPriorTurnsForLog(priorTurns),
+    messagesJson: stringifyRequestBody(messages),
   });
 
   let finalText = "";
@@ -147,7 +189,25 @@ export async function runAgent(options) {
   let thinkingNudgeUsed = false;
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const turnNumber = turn + 1;
+    const requestBody = buildAgentRequestPreview(settings, messages);
+
+    callbacks.onAgentTurnRequest?.({
+      turn: turnNumber,
+      requestBody,
+      messagesJson: stringifyRequestBody(messages),
+    });
+    callbacks.onReasoningStreamStart?.({ turn: turnNumber });
+
     const response = await api.agentTurn(messages, settings);
+
+    callbacks.onReasoningStreamEnd?.({
+      turn: turnNumber,
+      reasoning:
+        typeof response.reasoning === "string" && response.reasoning.length > 0
+          ? response.reasoning
+          : null,
+    });
 
     if (response.tool_calls && response.tool_calls.length > 0) {
       /** @type {Record<string, unknown>} */

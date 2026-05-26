@@ -968,8 +968,17 @@ async function _sendAgentPrompt(text, options = {}) {
         onToolResult: (toolCall, result) => {
           _emitToolResult(toolCall, result);
         },
-        onAgentContext: ({ userContent, systemPrompt }) => {
-          _emitAgentContext(userContent, systemPrompt);
+        onAgentContext: (payload) => {
+          _emitAgentContext(payload);
+        },
+        onAgentTurnRequest: (payload) => {
+          _emitAgentTurnRequest(payload);
+        },
+        onReasoningStreamStart: (payload) => {
+          _emitReasoningStreamStart(payload);
+        },
+        onReasoningStreamEnd: (payload) => {
+          _emitReasoningStreamEnd(payload);
         },
         onAssistantToolTurn: (content) => {
           _emitAssistantToolTurn(content);
@@ -1299,21 +1308,81 @@ function _emitChatRetry(text, model) {
 }
 
 /**
- * @param {string} userContent
- * @param {string} systemPrompt
+ * @param {{
+ *   userContent?: string,
+ *   systemPrompt?: string,
+ *   requestBody?: Record<string, unknown>,
+ *   inferenceSummary?: string,
+ *   priorTurnsSummary?: string,
+ *   messagesJson?: string,
+ * }} payload
  * @returns {void}
  */
-function _emitAgentContext(userContent, systemPrompt) {
+function _emitAgentContext(payload) {
   if (typeof document === "undefined" || typeof CustomEvent !== "function") {
     return;
   }
   try {
     document.dispatchEvent(
       new CustomEvent("editor:agent-context", {
-        detail: {
-          userContent: typeof userContent === "string" ? userContent : "",
-          systemPrompt: typeof systemPrompt === "string" ? systemPrompt : "",
-        },
+        detail: payload && typeof payload === "object" ? payload : {},
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ turn?: number, requestBody?: Record<string, unknown>, messagesJson?: string }} payload
+ * @returns {void}
+ */
+function _emitAgentTurnRequest(payload) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:agent-turn-request", {
+        detail: payload && typeof payload === "object" ? payload : {},
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ turn?: number }} payload
+ * @returns {void}
+ */
+function _emitReasoningStreamStart(payload) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:reasoning-stream-start", {
+        detail: payload && typeof payload === "object" ? payload : {},
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param {{ turn?: number, reasoning?: string|null }} payload
+ * @returns {void}
+ */
+function _emitReasoningStreamEnd(payload) {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:reasoning-stream-end", {
+        detail: payload && typeof payload === "object" ? payload : {},
       })
     );
   } catch {

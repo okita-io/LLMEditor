@@ -19,6 +19,7 @@
   --success: #4ec9b0;
   --danger: #f48771;
   --warning: #dcdcaa;
+  --reasoning: #c586c0;
   --font-ui: Inter, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
     monospace;
@@ -619,6 +620,35 @@ body {
 
 .chat-bubble-agent-turn .chat-bubble-label {
   color: var(--warning);
+}
+
+.chat-bubble-reasoning {
+  background: color-mix(in srgb, var(--reasoning) 8%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--reasoning) 55%, var(--border));
+}
+
+.chat-bubble-reasoning-active {
+  border-color: var(--reasoning);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--reasoning) 35%, transparent);
+}
+
+.chat-bubble-reasoning .chat-bubble-label {
+  color: var(--reasoning);
+}
+
+.chat-reasoning-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.chat-bubble-turn-request {
+  border-style: dashed;
 }
 
 .chat-bubble-tool .chat-bubble-label,

@@ -70,6 +70,10 @@ pub fn emit_file_opened(app: &AppHandle, contents: &str) -> Result<(), tauri::Er
 /// the active insertion mode without further processing.
 pub const EVENT_LLM_TOKEN: &str = "tauri://llm-token";
 
+/// Event name pushed during streaming agent turns when the model emits a
+/// reasoning/thinking fragment (`delta.reasoning` or `delta.reasoning_content`).
+pub const EVENT_LLM_REASONING_TOKEN: &str = "tauri://llm-reasoning-token";
+
 /// Event name pushed by `llm_client::start_stream` exactly once per stream
 /// — the terminal arm of the `tokio::select!` (Req 13.5). The payload is
 /// `LlmCompletePayload`; on a clean completion (`[DONE]` or user cancel)
@@ -100,6 +104,11 @@ pub struct LlmCompletePayload {
 /// transient WebView dispatch failure does not abort the whole stream.
 pub fn emit_llm_token(app: &AppHandle, fragment: &str) -> Result<(), tauri::Error> {
     app.emit(EVENT_LLM_TOKEN, fragment)
+}
+
+/// Emit `tauri://llm-reasoning-token` with `fragment` as the payload.
+pub fn emit_llm_reasoning_token(app: &AppHandle, fragment: &str) -> Result<(), tauri::Error> {
+    app.emit(EVENT_LLM_REASONING_TOKEN, fragment)
 }
 
 /// Emit `tauri://llm-complete` with the given `error` (or `None` for a
@@ -150,7 +159,12 @@ mod tests {
     /// `tauri::Error::EventName` the first time the helper is invoked.
     #[test]
     fn event_names_use_valid_event_name_chars() {
-        for name in [EVENT_FILE_OPENED, EVENT_LLM_TOKEN, EVENT_LLM_COMPLETE] {
+        for name in [
+            EVENT_FILE_OPENED,
+            EVENT_LLM_TOKEN,
+            EVENT_LLM_REASONING_TOKEN,
+            EVENT_LLM_COMPLETE,
+        ] {
             for c in name.chars() {
                 assert!(
                     c.is_ascii_alphanumeric() || matches!(c, '/' | ':' | '_' | '-'),
