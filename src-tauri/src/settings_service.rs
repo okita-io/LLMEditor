@@ -316,6 +316,8 @@ const FIELDS: &[&str] = &[
     "min_p",
     "structured_output_enabled",
     "structured_output",
+    "inference_presets",
+    "active_inference_preset",
 ];
 
 /// Take each known field from `obj` if present and valid; fall back to

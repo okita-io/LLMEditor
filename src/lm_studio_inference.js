@@ -26,6 +26,7 @@ export const LM_STUDIO_INFERENCE_DEFAULTS = Object.freeze({
   min_p: 0.05,
   structured_output_enabled: false,
   structured_output: "",
+  reasoning_enabled: true,
 });
 
 /**
@@ -143,6 +144,13 @@ export function applyInferenceSettings(body, settings) {
     if (responseFormat) {
       body.response_format = responseFormat;
     }
+  }
+
+  // Reasoning toggle. Mirrors the Rust path: only the off-switch is sent on
+  // the wire (`reasoning_effort: "minimal"`); the on-state defers to the
+  // model's own default so non-reasoning models aren't affected.
+  if (s.reasoning_enabled === false) {
+    body.reasoning_effort = "minimal";
   }
 }
 

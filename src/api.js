@@ -177,3 +177,27 @@ export async function saveSettings(settings) {
 export async function listModels(apiUrl) {
   return await getInvoke()("list_models", { apiUrl });
 }
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   loaded: boolean,
+ *   capabilities: {
+ *     vision: boolean,
+ *     tool_use: boolean,
+ *     reasoning: { allowed_options: string[], default: string | null } | null,
+ *   },
+ * }} ModelInfo
+ */
+
+/**
+ * Fetch detailed model metadata (capabilities, loaded state) from LM
+ * Studio's native `/api/v1/models` endpoint. Falls back to bare IDs if
+ * the server is OpenAI-compat-only.
+ *
+ * @param {string} apiUrl
+ * @returns {Promise<ModelInfo[]>}
+ */
+export async function listModelsDetailed(apiUrl) {
+  return await getInvoke()("list_models_detailed", { apiUrl });
+}

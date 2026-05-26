@@ -213,6 +213,35 @@ describe("api.saveSettings", () => {
   });
 });
 
+describe("api.listModelsDetailed", () => {
+  it("invokes list_models_detailed with the apiUrl argument", async () => {
+    const result = [
+      {
+        id: "a-model",
+        loaded: true,
+        capabilities: {
+          vision: false,
+          tool_use: true,
+          reasoning: { allowed_options: ["off", "on"], default: "on" },
+        },
+      },
+    ];
+    const calls = installInvokeStub(() => Promise.resolve(result));
+
+    const models = await api.listModelsDetailed(
+      "http://localhost:1234/v1/chat/completions"
+    );
+
+    expect(models).toBe(result);
+    expect(calls).toEqual([
+      {
+        cmd: "list_models_detailed",
+        args: { apiUrl: "http://localhost:1234/v1/chat/completions" },
+      },
+    ]);
+  });
+});
+
 describe("api missing-bridge guard", () => {
   it("throws a clear error when window.__TAURI__ is absent", async () => {
     delete globalThis.__TAURI__;

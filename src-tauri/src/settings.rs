@@ -30,6 +30,8 @@
 // All length bounds are measured in Unicode code points (`chars().count()`),
 // mirroring the editor's character-count semantics (Req 8.8, Req 9.3).
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 // -----------------------------------------------------------------------------
@@ -94,6 +96,12 @@ pub const STOP_STRINGS_MAX_CHARS: usize = 4096;
 
 /// Inclusive maximum length of `structured_output` in Unicode code points.
 pub const STRUCTURED_OUTPUT_MAX_CHARS: usize = 32_768;
+
+/// Inclusive maximum length of a preset name in Unicode code points.
+pub const PRESET_NAME_MAX_CHARS: usize = 128;
+
+/// Inclusive maximum number of named inference presets.
+pub const INFERENCE_PRESETS_MAX: usize = 64;
 
 // -----------------------------------------------------------------------------
 // FieldError
@@ -162,6 +170,60 @@ impl Default for ContextOverflowPolicy {
 }
 
 // -----------------------------------------------------------------------------
+// InferencePreset
+// -----------------------------------------------------------------------------
+
+/// Snapshot of inference-panel fields stored under a named preset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InferencePreset {
+    pub system_prompt: String,
+    pub temperature: f64,
+    pub limit_response_length: bool,
+    pub max_tokens: u32,
+    pub context_overflow_policy: ContextOverflowPolicy,
+    pub stop_strings: String,
+    pub top_k: u32,
+    pub repeat_penalty_enabled: bool,
+    pub repeat_penalty: f64,
+    pub presence_penalty_enabled: bool,
+    pub presence_penalty: f64,
+    pub top_p_enabled: bool,
+    pub top_p: f64,
+    pub min_p_enabled: bool,
+    pub min_p: f64,
+    pub structured_output_enabled: bool,
+    pub structured_output: String,
+    #[serde(default = "default_true")]
+    pub reasoning_enabled: bool,
+}
+
+impl Default for InferencePreset {
+    fn default() -> Self {
+        Self {
+            system_prompt: String::new(),
+            temperature: 0.2,
+            limit_response_length: true,
+            max_tokens: 2048,
+            context_overflow_policy: ContextOverflowPolicy::default(),
+            stop_strings: String::new(),
+            top_k: default_top_k(),
+            repeat_penalty_enabled: true,
+            repeat_penalty: default_repeat_penalty(),
+            presence_penalty_enabled: false,
+            presence_penalty: 0.0,
+            top_p_enabled: true,
+            top_p: default_top_p(),
+            min_p_enabled: true,
+            min_p: default_min_p(),
+            structured_output_enabled: false,
+            structured_output: String::new(),
+            reasoning_enabled: true,
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Settings
 // -----------------------------------------------------------------------------
 
@@ -224,6 +286,20 @@ pub struct Settings {
     /// JSON schema (object) or full `response_format` payload as text.
     #[serde(default)]
     pub structured_output: String,
+    /// User's reasoning preference for the active model. Honored only when
+    /// the loaded model exposes `capabilities.reasoning` (the inference
+    /// panel renders the checkbox muted otherwise). When `false` the
+    /// request body carries `reasoning_effort: "minimal"` so reasoning
+    /// models skip the thinking phase; when `true` we omit the field so
+    /// the model uses its own default.
+    #[serde(default = "default_true")]
+    pub reasoning_enabled: bool,
+    /// Named inference presets keyed by display name.
+    #[serde(default)]
+    pub inference_presets: HashMap<String, InferencePreset>,
+    /// Name of the preset currently loaded in the inference panel (empty = none).
+    #[serde(default)]
+    pub active_inference_preset: String,
 }
 
 fn default_true() -> bool {
@@ -273,7 +349,98 @@ impl Default for Settings {
             min_p: default_min_p(),
             structured_output_enabled: false,
             structured_output: String::new(),
+            reasoning_enabled: true,
+            inference_presets: HashMap::new(),
+            active_inference_preset: String::new(),
         }
+    }
+}
+
+impl InferencePreset {
+    /// Validate every inference field against the same bounds as `Settings`.
+    pub fn validate(&self) -> Result<(), Vec<FieldError>> {
+        let mut errs: Vec<FieldError> = Vec::new();
+        if let Err(e) = validate_system_prompt(&self.system_prompt) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_temperature(self.temperature) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_max_tokens(self.max_tokens) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_top_k(self.top_k) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_repeat_penalty(self.repeat_penalty) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_presence_penalty(self.presence_penalty) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_top_p(self.top_p) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_min_p(self.min_p) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_stop_strings(&self.stop_strings) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_structured_output(&self.structured_output) {
+            errs.push(e);
+        }
+        if errs.is_empty() {
+            Ok(())
+        } else {
+            Err(errs)
+        }
+    }
+
+    /// Build a preset snapshot from the top-level inference fields on `Settings`.
+    pub fn from_settings(s: &Settings) -> Self {
+        Self {
+            system_prompt: s.system_prompt.clone(),
+            temperature: s.temperature,
+            limit_response_length: s.limit_response_length,
+            max_tokens: s.max_tokens,
+            context_overflow_policy: s.context_overflow_policy,
+            stop_strings: s.stop_strings.clone(),
+            top_k: s.top_k,
+            repeat_penalty_enabled: s.repeat_penalty_enabled,
+            repeat_penalty: s.repeat_penalty,
+            presence_penalty_enabled: s.presence_penalty_enabled,
+            presence_penalty: s.presence_penalty,
+            top_p_enabled: s.top_p_enabled,
+            top_p: s.top_p,
+            min_p_enabled: s.min_p_enabled,
+            min_p: s.min_p,
+            structured_output_enabled: s.structured_output_enabled,
+            structured_output: s.structured_output.clone(),
+            reasoning_enabled: s.reasoning_enabled,
+        }
+    }
+
+    /// Apply this preset's inference fields onto `Settings`.
+    pub fn apply_to(&self, settings: &mut Settings) {
+        settings.system_prompt = self.system_prompt.clone();
+        settings.temperature = self.temperature;
+        settings.limit_response_length = self.limit_response_length;
+        settings.max_tokens = self.max_tokens;
+        settings.context_overflow_policy = self.context_overflow_policy;
+        settings.stop_strings = self.stop_strings.clone();
+        settings.top_k = self.top_k;
+        settings.repeat_penalty_enabled = self.repeat_penalty_enabled;
+        settings.repeat_penalty = self.repeat_penalty;
+        settings.presence_penalty_enabled = self.presence_penalty_enabled;
+        settings.presence_penalty = self.presence_penalty;
+        settings.top_p_enabled = self.top_p_enabled;
+        settings.top_p = self.top_p;
+        settings.min_p_enabled = self.min_p_enabled;
+        settings.min_p = self.min_p;
+        settings.structured_output_enabled = self.structured_output_enabled;
+        settings.structured_output = self.structured_output.clone();
+        settings.reasoning_enabled = self.reasoning_enabled;
     }
 }
 
@@ -327,6 +494,14 @@ impl Settings {
             errs.push(e);
         }
         if let Err(e) = validate_structured_output(&self.structured_output) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_inference_presets_map(&self.inference_presets) {
+            errs.push(e);
+        }
+        if let Err(e) =
+            validate_active_inference_preset(&self.active_inference_preset, &self.inference_presets)
+        {
             errs.push(e);
         }
 
@@ -433,6 +608,28 @@ impl Settings {
                 let s = expect_string(name, value)?;
                 validate_structured_output(s)
             }
+            "reasoning_enabled" => {
+                expect_bool(name, value)?;
+                Ok(())
+            }
+            "inference_presets" => {
+                let map: HashMap<String, InferencePreset> =
+                    serde_json::from_value(value.clone()).map_err(|e| {
+                        FieldError::new("inference_presets", format!("expected an object: {e}"))
+                    })?;
+                validate_inference_presets_map(&map)
+            }
+            "active_inference_preset" => {
+                let s = expect_string(name, value)?;
+                let len = char_len(s);
+                if len > PRESET_NAME_MAX_CHARS {
+                    return Err(FieldError::new(
+                        "active_inference_preset",
+                        format!("must be at most {PRESET_NAME_MAX_CHARS} characters"),
+                    ));
+                }
+                Ok(())
+            }
             other => Err(FieldError::new(other, "unknown settings field")),
         }
     }
@@ -467,6 +664,69 @@ pub fn is_http_or_https_url(s: &str) -> bool {
 
 fn char_len(s: &str) -> usize {
     s.chars().count()
+}
+
+fn validate_preset_name(name: &str) -> Result<(), FieldError> {
+    let len = char_len(name);
+    if len < 1 {
+        return Err(FieldError::new(
+            "inference_presets",
+            "preset name must not be empty",
+        ));
+    }
+    if len > PRESET_NAME_MAX_CHARS {
+        return Err(FieldError::new(
+            "inference_presets",
+            format!("preset name must be at most {PRESET_NAME_MAX_CHARS} characters"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_inference_presets_map(
+    map: &HashMap<String, InferencePreset>,
+) -> Result<(), FieldError> {
+    if map.len() > INFERENCE_PRESETS_MAX {
+        return Err(FieldError::new(
+            "inference_presets",
+            format!("must contain at most {INFERENCE_PRESETS_MAX} presets"),
+        ));
+    }
+    for (name, preset) in map {
+        validate_preset_name(name)?;
+        if let Err(errs) = preset.validate() {
+            let reason = errs
+                .iter()
+                .map(|e| format!("{}: {}", e.field, e.reason))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(FieldError::new(
+                "inference_presets",
+                format!("preset \"{name}\" is invalid: {reason}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_active_inference_preset(
+    name: &str,
+    presets: &HashMap<String, InferencePreset>,
+) -> Result<(), FieldError> {
+    let len = char_len(name);
+    if len > PRESET_NAME_MAX_CHARS {
+        return Err(FieldError::new(
+            "active_inference_preset",
+            format!("must be at most {PRESET_NAME_MAX_CHARS} characters"),
+        ));
+    }
+    if !name.is_empty() && !presets.contains_key(name) {
+        return Err(FieldError::new(
+            "active_inference_preset",
+            format!("unknown preset \"{name}\""),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_api_url(s: &str) -> Result<(), FieldError> {
@@ -961,6 +1221,45 @@ mod tests {
     fn validate_field_rejects_unknown_field() {
         let err = Settings::validate_field("not_a_field", &json!("x")).unwrap_err();
         assert_eq!(err.field, "not_a_field");
+    }
+
+    #[test]
+    fn validate_accepts_inference_presets_map() {
+        let presets = json!({
+            "The Surgical Editor": {
+                "temperature": 0.1,
+                "max_tokens": 512,
+                "system_prompt": "Edit carefully."
+            }
+        });
+        assert!(Settings::validate_field("inference_presets", &presets).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_empty_preset_name() {
+        let presets = json!({
+            "": { "temperature": 0.2 }
+        });
+        assert!(Settings::validate_field("inference_presets", &presets).is_err());
+    }
+
+    #[test]
+    fn settings_with_presets_round_trips() {
+        let mut s = Settings::default();
+        s.inference_presets.insert(
+            "Creative".into(),
+            InferencePreset {
+                temperature: 1.2,
+                system_prompt: "Be bold.".into(),
+                ..InferencePreset::default()
+            },
+        );
+        s.active_inference_preset = "Creative".into();
+        assert!(s.validate().is_ok());
+        let j = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&j).unwrap();
+        assert_eq!(s2.inference_presets.get("Creative"), s.inference_presets.get("Creative"));
+        assert_eq!(s2.active_inference_preset, "Creative");
     }
 
     #[test]

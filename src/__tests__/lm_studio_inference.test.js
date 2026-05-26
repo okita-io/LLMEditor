@@ -65,6 +65,18 @@ describe("applyInferenceSettings", () => {
     applyInferenceSettings(body, defaultLmStudioSettings({ limit_response_length: false }));
     expect(body.max_tokens).toBeUndefined();
   });
+
+  it("omits reasoning_effort when reasoning_enabled is true (model default)", () => {
+    const body = {};
+    applyInferenceSettings(body, defaultLmStudioSettings({ reasoning_enabled: true }));
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+
+  it("sends reasoning_effort: minimal when reasoning_enabled is false", () => {
+    const body = {};
+    applyInferenceSettings(body, defaultLmStudioSettings({ reasoning_enabled: false }));
+    expect(body.reasoning_effort).toBe("minimal");
+  });
 });
 
 describe("buildLmStudioChatBody", () => {

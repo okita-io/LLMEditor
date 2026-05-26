@@ -158,3 +158,143 @@ export async function fetchLmStudioModels(apiUrl, options = {}) {
   res = await fetchWithTimeout(primaryUrl, timeoutMs);
   return parseModelsResponse(res);
 }
+
+/**
+ * @typedef {Object} LmStudioReasoningCapability
+ * @property {string[]} allowed_options
+ * @property {string | null} default
+ *
+ * @typedef {Object} LmStudioModelCapabilities
+ * @property {boolean} vision
+ * @property {boolean} tool_use
+ * @property {LmStudioReasoningCapability | null} reasoning
+ *
+ * @typedef {Object} LmStudioModelInfo
+ * @property {string} id
+ * @property {boolean} loaded
+ * @property {LmStudioModelCapabilities} capabilities
+ */
+
+/**
+ * Empty capability shape used as the fallback for endpoints that don't
+ * surface per-model metadata (older LM Studio builds, OpenAI-compat-only
+ * servers).
+ *
+ * @returns {LmStudioModelCapabilities}
+ */
+export function emptyCapabilities() {
+  return { vision: false, tool_use: false, reasoning: null };
+}
+
+/**
+ * Normalize a single entry from `/api/v1/models` (or the legacy
+ * `/v1/models`) into the shared `LmStudioModelInfo` shape. Embedding
+ * models return `null` so callers can drop them from the chat picker
+ * without re-checking the model `type` field.
+ *
+ * @param {unknown} entry
+ * @returns {LmStudioModelInfo | null}
+ */
+export function parseModelInfoEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+
+  const rawId =
+    typeof entry.id === "string"
+      ? entry.id
+      : typeof entry.key === "string"
+        ? entry.key
+        : "";
+  const id = rawId.trim();
+  if (id.length === 0) return null;
+
+  const type =
+    typeof entry.type === "string" ? entry.type.toLowerCase() : "";
+  if (type === "embedding" || type === "embeddings") return null;
+
+  let loaded = false;
+  if (Array.isArray(entry.loaded_instances)) {
+    loaded = entry.loaded_instances.length > 0;
+  } else if (typeof entry.state === "string") {
+    loaded = entry.state === "loaded";
+  }
+
+  const caps =
+    entry.capabilities && typeof entry.capabilities === "object"
+      ? entry.capabilities
+      : null;
+
+  let vision = false;
+  let toolUse = false;
+  /** @type {LmStudioReasoningCapability | null} */
+  let reasoning = null;
+
+  if (caps && !Array.isArray(caps)) {
+    vision = caps.vision === true;
+    toolUse = caps.trained_for_tool_use === true;
+    const r = caps.reasoning;
+    if (r && typeof r === "object" && Array.isArray(r.allowed_options)) {
+      const allowed = r.allowed_options
+        .filter((opt) => typeof opt === "string" && opt.length > 0);
+      if (allowed.length > 0) {
+        reasoning = {
+          allowed_options: allowed,
+          default: typeof r.default === "string" ? r.default : null,
+        };
+      }
+    }
+  } else if (Array.isArray(caps)) {
+    toolUse = caps.includes("tool_use");
+  }
+
+  return {
+    id,
+    loaded,
+    capabilities: { vision, tool_use: toolUse, reasoning },
+  };
+}
+
+/**
+ * @param {Response} res
+ * @returns {Promise<LmStudioModelInfo[]>}
+ */
+async function parseDetailedModelsResponse(res) {
+  if (!res.ok) {
+    throw new Error(`models request failed: HTTP ${res.status}`);
+  }
+  const body = await res.json();
+  const entries = Array.isArray(body?.models)
+    ? body.models
+    : Array.isArray(body?.data)
+      ? body.data
+      : [];
+  /** @type {LmStudioModelInfo[]} */
+  const out = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    const info = parseModelInfoEntry(entry);
+    if (info === null || seen.has(info.id)) continue;
+    seen.add(info.id);
+    out.push(info);
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
+/**
+ * Fetch models with capability metadata. Always hits LM Studio's native
+ * `/api/v1/models` endpoint because the OpenAI-compatible one does not
+ * surface `capabilities`.
+ *
+ * @param {string} apiUrl
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<LmStudioModelInfo[]>}
+ */
+export async function fetchLmStudioModelsDetailed(apiUrl, options = {}) {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const nativeUrl = lmStudioModelsUrl(apiUrl);
+  if (nativeUrl.length === 0) {
+    throw new Error("API URL is required");
+  }
+  const res = await fetchWithTimeout(nativeUrl, timeoutMs);
+  return parseDetailedModelsResponse(res);
+}

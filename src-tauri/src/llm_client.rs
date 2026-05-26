@@ -178,6 +178,16 @@ fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Setti
             body.insert("response_format".into(), response_format);
         }
     }
+
+    // Reasoning toggle. The frontend gates the user-visible checkbox on the
+    // active model's `capabilities.reasoning` so this branch can fire
+    // unconditionally — non-reasoning models silently ignore the field. We
+    // only send the off-switch ("minimal" effort) because forcing reasoning
+    // on a model that doesn't support it has no effect, while disabling
+    // reasoning on a thinking model is the user-meaningful action.
+    if !s.reasoning_enabled {
+        body.insert("reasoning_effort".into(), json!("minimal"));
+    }
 }
 
 fn parse_stop_strings(raw: &str) -> Vec<String> {
@@ -1283,6 +1293,23 @@ mod tests {
         s.limit_response_length = false;
         let body = build_body("user", &s, false);
         assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn build_body_omits_reasoning_effort_by_default() {
+        // `Settings::default()` has `reasoning_enabled: true`, so we omit
+        // the field and let the model use its own default reasoning mode.
+        let s = settings_with_prompt("");
+        let body = build_body("user", &s, false);
+        assert!(body.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn build_body_sets_reasoning_effort_minimal_when_disabled() {
+        let mut s = settings_with_prompt("");
+        s.reasoning_enabled = false;
+        let body = build_body("user", &s, false);
+        assert_eq!(body["reasoning_effort"], "minimal");
     }
 
     #[test]

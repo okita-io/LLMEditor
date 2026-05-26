@@ -53,6 +53,51 @@
               <select id="chat-model-picker" class="chat-model-picker" aria-label="Model">
                 <option value="">(no model)</option>
               </select>
+              <div id="chat-capability-icons" class="chat-capability-icons" aria-label="Model capabilities">
+                <span
+                  id="chat-cap-vision"
+                  class="chat-cap-icon"
+                  data-capability="vision"
+                  data-state="unsupported"
+                  role="img"
+                  aria-label="Vision capability"
+                  title="Vision: not supported"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </span>
+                <span
+                  id="chat-cap-tools"
+                  class="chat-cap-icon"
+                  data-capability="tools"
+                  data-state="unsupported"
+                  role="img"
+                  aria-label="Tool use capability"
+                  title="Tool use: not supported"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2 2 6-6a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.4-2.4 2.4-2.4Z" />
+                  </svg>
+                </span>
+                <button
+                  id="chat-cap-reasoning"
+                  type="button"
+                  class="chat-cap-icon chat-cap-reasoning"
+                  data-capability="reasoning"
+                  data-state="unsupported"
+                  aria-label="Reasoning: not supported"
+                  aria-pressed="false"
+                  title="Reasoning: not supported"
+                  disabled
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3 1.5 8.5 12 14l10.5-5.5L12 3Z" />
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 11v4c0 1.7 2.7 3 6 3s6-1.3 6-3v-4" />
+                  </svg>
+                </button>
+              </div>
               <button id="chat-send" type="button">Send</button>
             </div>
           </div>

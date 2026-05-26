@@ -478,6 +478,34 @@ pub async fn save_settings(
 // list_models — fetch available models from LM Studio
 // -----------------------------------------------------------------------------
 
+/// Per-model capability flags surfaced by LM Studio's native REST endpoint
+/// `/api/v1/models`. Vision and tool-use are simple booleans. Reasoning is
+/// nullable: present iff the model supports thinking/reasoning, in which
+/// case it carries the allowed toggle values (`["off","on"]` or
+/// `["on"]`) and the model's preferred default. Models served by the
+/// OpenAI-compatible `/v1/models` endpoint do not include capabilities;
+/// they surface as `false`/`null` defaults so the frontend can still
+/// render the picker.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ModelReasoningCapability {
+    pub allowed_options: Vec<String>,
+    pub default: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ModelCapabilities {
+    pub vision: bool,
+    pub tool_use: bool,
+    pub reasoning: Option<ModelReasoningCapability>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ModelInfo {
+    pub id: String,
+    pub loaded: bool,
+    pub capabilities: ModelCapabilities,
+}
+
 /// Fetch the list of loaded model IDs from an LM Studio (or compatible)
 /// server. Tries the OpenAI-compatible `/v1/models` endpoint first (which
 /// only returns loaded models), then falls back to `/api/v1/models`.
@@ -488,6 +516,18 @@ pub async fn save_settings(
 #[tauri::command]
 pub async fn list_models(api_url: String) -> Result<Vec<String>, String> {
     list_models_impl(&api_url).await.map_err(|e| e.to_string())
+}
+
+/// Like `list_models`, but returns LM Studio capability metadata per
+/// model. Always hits `/api/v1/models` (the native REST endpoint) since
+/// the OpenAI-compat endpoint does not surface capabilities. Filters out
+/// embedding-only models and unloaded models by default so the chat
+/// picker only sees usable LLMs.
+#[tauri::command]
+pub async fn list_models_detailed(api_url: String) -> Result<Vec<ModelInfo>, String> {
+    list_models_detailed_impl(&api_url)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Internal implementation for `list_models`.
@@ -529,6 +569,159 @@ async fn list_models_impl(api_url: &str) -> Result<Vec<String>, Box<dyn std::err
         return Err("server returned no models (load a model in LM Studio first)".into());
     }
     Ok(ids)
+}
+
+/// Internal implementation for `list_models_detailed`.
+async fn list_models_detailed_impl(
+    api_url: &str,
+) -> Result<Vec<ModelInfo>, Box<dyn std::error::Error + Send + Sync>> {
+    let trimmed = api_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("API URL is required".into());
+    }
+
+    let base = if trimmed.ends_with("/api/v1/chat/completions") {
+        &trimmed[..trimmed.len() - "/api/v1/chat/completions".len()]
+    } else if trimmed.ends_with("/v1/chat/completions") {
+        &trimmed[..trimmed.len() - "/v1/chat/completions".len()]
+    } else if trimmed.ends_with("/api/v1") {
+        &trimmed[..trimmed.len() - "/api/v1".len()]
+    } else if trimmed.ends_with("/v1") {
+        &trimmed[..trimmed.len() - "/v1".len()]
+    } else {
+        trimmed
+    };
+
+    let native_url = format!("{base}/api/v1/models");
+    let client = crate::llm_client::http_client_ref();
+    let timeout = std::time::Duration::from_secs(10);
+
+    let res = client
+        .get(&native_url)
+        .timeout(timeout)
+        .header("Accept", "application/json")
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        return Err(
+            format!("models request failed: HTTP {}", res.status().as_u16()).into(),
+        );
+    }
+
+    let body: serde_json::Value = res.json().await?;
+    Ok(parse_detailed_models(&body))
+}
+
+/// Parse the `/api/v1/models` response into `ModelInfo` entries.
+///
+/// Pulled out as a pure function so unit tests can pin the parsing rules
+/// (loaded vs unloaded, capability flag interpretation, embedding model
+/// filtering) without standing up an HTTP server.
+fn parse_detailed_models(body: &serde_json::Value) -> Vec<ModelInfo> {
+    let entries: Vec<&serde_json::Value> = if let Some(arr) =
+        body.get("models").and_then(|v| v.as_array())
+    {
+        arr.iter().collect()
+    } else if let Some(arr) = body.get("data").and_then(|v| v.as_array()) {
+        arr.iter().collect()
+    } else {
+        return Vec::new();
+    };
+
+    let mut out: Vec<ModelInfo> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for entry in entries {
+        let id = if let Some(s) = entry.get("id").and_then(|v| v.as_str()) {
+            s.trim().to_string()
+        } else if let Some(s) = entry.get("key").and_then(|v| v.as_str()) {
+            s.trim().to_string()
+        } else {
+            continue;
+        };
+        if id.is_empty() || seen.contains(&id) {
+            continue;
+        }
+
+        // Filter embedding-only models out of the chat picker. The `type`
+        // field is "llm" / "vlm" / "embedding" on the native endpoint;
+        // unknown types pass through so future model classes still appear.
+        let model_type = entry
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if model_type == "embedding" || model_type == "embeddings" {
+            continue;
+        }
+
+        // `loaded_instances: [...]` (native endpoint) marks a loaded
+        // model; the OpenAI-compat `state: "loaded"` is the legacy form.
+        let loaded = entry
+            .get("loaded_instances")
+            .and_then(|v| v.as_array())
+            .map(|arr| !arr.is_empty())
+            .or_else(|| {
+                entry
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s == "loaded")
+            })
+            .unwrap_or(false);
+
+        let caps_obj = entry.get("capabilities");
+        let vision = caps_obj
+            .and_then(|c| c.get("vision"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let tool_use = caps_obj
+            .and_then(|c| c.get("trained_for_tool_use"))
+            .and_then(|v| v.as_bool())
+            .or_else(|| {
+                // Legacy `/v1/models` shape: capabilities is an array of
+                // strings rather than an object.
+                caps_obj.and_then(|c| c.as_array()).map(|arr| {
+                    arr.iter().any(|v| v.as_str() == Some("tool_use"))
+                })
+            })
+            .unwrap_or(false);
+        let reasoning = caps_obj
+            .and_then(|c| c.get("reasoning"))
+            .and_then(|r| {
+                let allowed = r
+                    .get("allowed_options")
+                    .and_then(|v| v.as_array())?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>();
+                if allowed.is_empty() {
+                    return None;
+                }
+                let default = r
+                    .get("default")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                Some(ModelReasoningCapability {
+                    allowed_options: allowed,
+                    default,
+                })
+            });
+
+        seen.insert(id.clone());
+        out.push(ModelInfo {
+            id,
+            loaded,
+            capabilities: ModelCapabilities {
+                vision,
+                tool_use,
+                reasoning,
+            },
+        });
+    }
+
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
 }
 
 /// Fetch models from a URL and parse the response.
@@ -593,6 +786,99 @@ async fn fetch_and_parse_models(
 mod tests {
     use super::*;
     use crate::file_service::LineEnding;
+    use serde_json::json;
+
+    // ---- parse_detailed_models -------------------------------------------
+
+    #[test]
+    fn parse_detailed_models_extracts_capabilities_from_native_endpoint() {
+        let body = json!({
+            "models": [
+                {
+                    "type": "llm",
+                    "key": "qwen3-32b",
+                    "loaded_instances": [{ "id": "qwen3-32b" }],
+                    "capabilities": {
+                        "vision": false,
+                        "trained_for_tool_use": true,
+                        "reasoning": {
+                            "allowed_options": ["off", "on"],
+                            "default": "on"
+                        }
+                    }
+                },
+                {
+                    "type": "vlm",
+                    "key": "gemma-vl-7b",
+                    "loaded_instances": [],
+                    "capabilities": {
+                        "vision": true,
+                        "trained_for_tool_use": false
+                    }
+                },
+                {
+                    "type": "embedding",
+                    "key": "nomic-embed",
+                    "loaded_instances": []
+                }
+            ]
+        });
+
+        let models = parse_detailed_models(&body);
+        assert_eq!(models.len(), 2, "embedding model is filtered out");
+
+        let gemma = models.iter().find(|m| m.id == "gemma-vl-7b").unwrap();
+        assert_eq!(gemma.loaded, false);
+        assert_eq!(gemma.capabilities.vision, true);
+        assert_eq!(gemma.capabilities.tool_use, false);
+        assert!(gemma.capabilities.reasoning.is_none());
+
+        let qwen = models.iter().find(|m| m.id == "qwen3-32b").unwrap();
+        assert_eq!(qwen.loaded, true);
+        assert_eq!(qwen.capabilities.tool_use, true);
+        let r = qwen.capabilities.reasoning.as_ref().unwrap();
+        assert_eq!(r.allowed_options, vec!["off".to_string(), "on".to_string()]);
+        assert_eq!(r.default.as_deref(), Some("on"));
+    }
+
+    #[test]
+    fn parse_detailed_models_handles_openai_compat_state_field() {
+        let body = json!({
+            "data": [
+                {
+                    "id": "llama-3.1-8b",
+                    "type": "llm",
+                    "state": "loaded"
+                }
+            ]
+        });
+        let models = parse_detailed_models(&body);
+        assert_eq!(models.len(), 1);
+        assert!(models[0].loaded);
+        assert!(!models[0].capabilities.vision);
+        assert!(!models[0].capabilities.tool_use);
+        assert!(models[0].capabilities.reasoning.is_none());
+    }
+
+    #[test]
+    fn parse_detailed_models_returns_empty_when_neither_array_present() {
+        let body = json!({});
+        assert!(parse_detailed_models(&body).is_empty());
+    }
+
+    #[test]
+    fn parse_detailed_models_dedupes_and_sorts_by_id() {
+        let body = json!({
+            "models": [
+                { "type": "llm", "key": "z-model" },
+                { "type": "llm", "key": "a-model" },
+                { "type": "llm", "key": "a-model" }
+            ]
+        });
+        let models = parse_detailed_models(&body);
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["a-model", "z-model"]);
+    }
 
     // ---- validate_path ----------------------------------------------------
 

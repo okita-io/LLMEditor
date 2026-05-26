@@ -16,6 +16,12 @@ let clearBtn = null;
 let modelPickerEl = null;
 /** @type {HTMLElement | null} */
 let tokenCountEl = null;
+/** @type {HTMLElement | null} */
+let visionIconEl = null;
+/** @type {HTMLElement | null} */
+let toolsIconEl = null;
+/** @type {HTMLButtonElement | null} */
+let reasoningIconEl = null;
 /** @type {string} */
 let activeRequestModel = "";
 /** @type {boolean} */
@@ -28,6 +34,24 @@ let activeAssistantBubble = null;
 let activeAssistantBody = null;
 /** @type {HTMLElement | null} */
 let pendingUserBubble = null;
+
+/**
+ * Capability metadata for every model the picker knows about, keyed by
+ * the model id from the server. Populated by `loadModelList()` from
+ * `api.listModelsDetailed`; missing entries fall back to the empty
+ * capability shape so a server that only speaks OpenAI-compat still
+ * renders the icons as muted rather than throwing.
+ *
+ * @type {Map<string, {
+ *   loaded: boolean,
+ *   capabilities: {
+ *     vision: boolean,
+ *     tool_use: boolean,
+ *     reasoning: { allowed_options: string[], default: string | null } | null,
+ *   },
+ * }>}
+ */
+const modelCapabilityCache = new Map();
 
 /**
  * Estimate the number of tokens in the chat history context.
@@ -61,6 +85,151 @@ function updateTokenCount() {
 function scrollMessagesToBottom() {
   if (!messagesEl) return;
   messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+/**
+ * Lookup the cached capability metadata for `modelId`. Unknown models
+ * resolve to the muted default shape so the icons render predictably
+ * even before the detailed model list has loaded.
+ *
+ * @param {string} modelId
+ * @returns {{
+ *   vision: boolean,
+ *   tool_use: boolean,
+ *   reasoning: { allowed_options: string[], default: string | null } | null,
+ * }}
+ */
+function capabilitiesFor(modelId) {
+  if (typeof modelId !== "string" || modelId.length === 0) {
+    return { vision: false, tool_use: false, reasoning: null };
+  }
+  const entry = modelCapabilityCache.get(modelId);
+  if (!entry) return { vision: false, tool_use: false, reasoning: null };
+  return entry.capabilities;
+}
+
+/**
+ * Read the saved `reasoning_enabled` flag from settings (falling back
+ * to true). Used to seed the reasoning icon's visual state on each
+ * model-change so the toggle reflects what would actually be sent.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function loadReasoningEnabled() {
+  try {
+    const s = await api.loadSettings();
+    return s?.reasoning_enabled !== false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Set the `data-state` attribute on a capability icon. CSS picks up the
+ * attribute to paint success / muted colors.
+ *
+ * @param {HTMLElement | null} el
+ * @param {"on"|"off"|"unsupported"|"forced-on"} state
+ * @param {string} title
+ */
+function setIconState(el, state, title) {
+  if (!el) return;
+  el.dataset.state = state;
+  el.title = title;
+  if (el instanceof HTMLButtonElement) {
+    el.setAttribute("aria-label", title);
+    el.setAttribute("aria-pressed", state === "on" || state === "forced-on" ? "true" : "false");
+  } else {
+    el.setAttribute("aria-label", title);
+  }
+}
+
+/**
+ * Update the three capability icons in the send bar to reflect the
+ * currently selected model. Also dispatches `model:capabilities-changed`
+ * so the inference panel can gate its Reasoning checkbox on the same
+ * source of truth.
+ *
+ * @param {string} modelId
+ * @returns {Promise<void>}
+ */
+async function refreshCapabilityIcons(modelId) {
+  const caps = capabilitiesFor(modelId);
+
+  setIconState(
+    visionIconEl,
+    caps.vision ? "on" : "unsupported",
+    caps.vision ? "Vision: supported" : "Vision: not supported"
+  );
+  setIconState(
+    toolsIconEl,
+    caps.tool_use ? "on" : "unsupported",
+    caps.tool_use ? "Tool use: supported" : "Tool use: not supported"
+  );
+
+  if (reasoningIconEl) {
+    const r = caps.reasoning;
+    if (r === null) {
+      reasoningIconEl.disabled = true;
+      setIconState(reasoningIconEl, "unsupported", "Reasoning: not supported");
+    } else if (!r.allowed_options.includes("off")) {
+      reasoningIconEl.disabled = true;
+      setIconState(reasoningIconEl, "forced-on", "Reasoning: always on (model default)");
+    } else {
+      const enabled = await loadReasoningEnabled();
+      reasoningIconEl.disabled = false;
+      setIconState(
+        reasoningIconEl,
+        enabled ? "on" : "off",
+        enabled ? "Reasoning: on — click to disable" : "Reasoning: off — click to enable"
+      );
+    }
+  }
+
+  if (typeof document !== "undefined" && typeof CustomEvent === "function") {
+    document.dispatchEvent(
+      new CustomEvent("model:capabilities-changed", {
+        detail: {
+          model: modelId,
+          vision: caps.vision,
+          tool_use: caps.tool_use,
+          reasoning: caps.reasoning,
+        },
+      })
+    );
+  }
+}
+
+/**
+ * Toggle the persisted `reasoning_enabled` flag and refresh the icon.
+ * No-op if the active model does not allow disabling reasoning.
+ *
+ * @returns {Promise<void>}
+ */
+async function onReasoningIconClick() {
+  if (!reasoningIconEl || reasoningIconEl.disabled) return;
+  const modelId = modelPickerEl?.value ?? "";
+  const caps = capabilitiesFor(modelId);
+  if (caps.reasoning === null || !caps.reasoning.allowed_options.includes("off")) {
+    return;
+  }
+  let current;
+  try {
+    current = await api.loadSettings();
+  } catch {
+    current = {};
+  }
+  const next = current?.reasoning_enabled === false ? true : false;
+  try {
+    await api.saveSettings({ ...current, reasoning_enabled: next });
+  } catch {
+    /* keep visual state; persist failure is silent in the chat UI */
+    return;
+  }
+  if (typeof document !== "undefined" && typeof CustomEvent === "function") {
+    document.dispatchEvent(new CustomEvent("settings:inference-changed"));
+  }
+  await refreshCapabilityIcons(modelId);
 }
 
 /**
@@ -242,14 +411,42 @@ async function loadModelList() {
     const settings = await api.loadSettings();
     const currentModel =
       typeof settings?.model === "string" ? settings.model : modelPickerEl.value;
-    const models = await api.listModels(settings.api_url);
-    populateModelPicker(models, currentModel);
+
+    // Prefer the detailed endpoint so we can populate capability icons.
+    // If LM Studio is on an older build (no native endpoint) we fall back
+    // to bare ids; the icons remain in their muted/unsupported state.
+    let modelIds = [];
+    try {
+      const detailed = await api.listModelsDetailed(settings.api_url);
+      modelCapabilityCache.clear();
+      const loadedOnly = [];
+      for (const m of detailed) {
+        modelCapabilityCache.set(m.id, {
+          loaded: m.loaded === true,
+          capabilities: m.capabilities ?? {
+            vision: false,
+            tool_use: false,
+            reasoning: null,
+          },
+        });
+        if (m.loaded === true) loadedOnly.push(m.id);
+      }
+      // Loaded models are the only ones usable for inference; fall back
+      // to the full set when nothing is loaded so the user can still see
+      // what's downloaded.
+      modelIds = loadedOnly.length > 0 ? loadedOnly : detailed.map((m) => m.id);
+    } catch {
+      modelIds = await api.listModels(settings.api_url);
+    }
+    populateModelPicker(modelIds, currentModel);
     modelListLoaded = true;
+    await refreshCapabilityIcons(modelPickerEl.value);
   } catch {
     const current = modelPickerEl.value;
     if (current.length > 0) {
       populateModelPicker([current], current);
     }
+    await refreshCapabilityIcons(modelPickerEl?.value ?? "");
   } finally {
     modelListLoading = false;
   }
@@ -275,6 +472,7 @@ async function onModelPickerChange() {
   } catch {
     /* keep picker value; save failure is silent in chat UI */
   }
+  await refreshCapabilityIcons(model);
 }
 
 /**
@@ -650,6 +848,18 @@ export function initializeChat() {
   clearBtn = document.getElementById("chat-clear");
   modelPickerEl = document.getElementById("chat-model-picker");
   tokenCountEl = document.getElementById("chat-token-count");
+  visionIconEl = document.getElementById("chat-cap-vision");
+  toolsIconEl = document.getElementById("chat-cap-tools");
+  reasoningIconEl = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById("chat-cap-reasoning")
+  );
+
+  if (reasoningIconEl && !reasoningIconEl.dataset.chatBound) {
+    reasoningIconEl.dataset.chatBound = "1";
+    reasoningIconEl.addEventListener("click", () => {
+      void onReasoningIconClick();
+    });
+  }
 
   if (modelPickerEl && !modelPickerEl.dataset.chatBound) {
     modelPickerEl.dataset.chatBound = "1";
@@ -692,6 +902,13 @@ export function initializeChat() {
   chatListenersAttached = true;
 
   if (typeof document !== "undefined") {
+    document.addEventListener("settings:model-changed", () => {
+      void refreshCapabilityIcons(modelPickerEl?.value ?? "");
+    });
+    document.addEventListener("settings:inference-changed", () => {
+      void refreshCapabilityIcons(modelPickerEl?.value ?? "");
+    });
+
     document.addEventListener("editor:chat-start", (event) => {
       const detail =
         event && typeof event === "object" && "detail" in event ? event.detail : null;

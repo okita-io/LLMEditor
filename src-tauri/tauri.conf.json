@@ -12,8 +12,8 @@
       {
         "label": "main",
         "title": "LLIMEdit",
-        "width": 1280,
-        "height": 800,
+        "width": 1600,
+        "height": 1200,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,

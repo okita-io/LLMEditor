@@ -114,6 +114,7 @@ pub fn run() {
             crate::commands::load_settings,
             crate::commands::save_settings,
             crate::commands::list_models,
+            crate::commands::list_models_detailed,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

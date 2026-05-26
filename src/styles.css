@@ -16,6 +16,8 @@
   --text-primary: #d4d4d4;
   --text-muted: #858585;
   --text-menu: #cccccc;
+  --success: #4ec9b0;
+  --danger: #f48771;
   --warning: #dcdcaa;
   --font-ui: Inter, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
@@ -227,7 +229,7 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
 }
 
 .inference-heading {
@@ -240,11 +242,99 @@ body {
   color: var(--text-muted);
 }
 
+.inference-presets-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.inference-preset-name {
+  width: 100%;
+  height: 30px;
+  padding: 0 7px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.inference-preset-select {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.inference-preset-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.inference-preset-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.inference-preset-btn-primary {
+  background: var(--accent);
+}
+
+.inference-preset-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.inference-preset-btn-danger {
+  background: var(--bg-secondary);
+}
+
+.inference-preset-btn-danger:hover:not(:disabled) {
+  background: var(--warning);
+}
+
+.inference-preset-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.confirm-modal-content h2 {
+  margin: 0;
+}
+
+.confirm-modal-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
 .inference-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   min-height: 30px;
 }
 
@@ -308,6 +398,31 @@ body {
   cursor: pointer;
 }
 
+.inference-row-reasoning .inference-checkbox {
+  accent-color: var(--success);
+}
+
+.inference-row-reasoning[data-reasoning-state="off"] .inference-checkbox {
+  accent-color: var(--danger);
+}
+
+.inference-row-reasoning[data-reasoning-state="off"] .inference-row-label {
+  color: var(--danger);
+}
+
+.inference-row-reasoning[data-reasoning-state="on"] .inference-row-label,
+.inference-row-reasoning[data-reasoning-state="forced-on"] .inference-row-label {
+  color: var(--success);
+}
+
+.inference-row-reasoning[data-reasoning-state="unsupported"] {
+  opacity: 0.55;
+}
+
+.inference-row-reasoning[data-reasoning-state="unsupported"] .inference-row-label {
+  color: var(--text-muted);
+}
+
 .inference-textarea {
   width: 100%;
   padding: 8px;
@@ -317,7 +432,7 @@ body {
 }
 
 .inference-system-prompt {
-  min-height: 84px;
+  min-height: 200px;
 }
 
 .inference-structured-section {
@@ -632,6 +747,64 @@ body {
 
 .chat-model-picker.streaming {
   color: var(--warning);
+}
+
+.chat-capability-icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 4px;
+  flex: 0 0 auto;
+}
+
+.chat-cap-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: color 120ms ease;
+}
+
+.chat-cap-icon svg {
+  display: block;
+}
+
+.chat-cap-icon[data-state="on"],
+.chat-cap-icon[data-state="forced-on"] {
+  color: var(--success);
+}
+
+.chat-cap-icon[data-state="off"] {
+  color: var(--danger);
+}
+
+.chat-cap-icon[data-state="unsupported"] {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+button.chat-cap-icon:not(:disabled) {
+  cursor: pointer;
+}
+
+button.chat-cap-icon:not(:disabled):hover {
+  background: var(--input-bg);
+}
+
+button.chat-cap-icon:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button.chat-cap-icon:disabled {
+  cursor: not-allowed;
 }
 
 .chat-control-bar {
