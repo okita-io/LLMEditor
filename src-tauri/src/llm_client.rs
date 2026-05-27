@@ -316,7 +316,7 @@ pub struct AgentTurnResponse {
 }
 
 /// Build a chat-completions body with `tools` for the agent loop.
-pub fn build_agent_body(messages: &[Value], s: &Settings) -> Value {
+pub fn build_agent_body(messages: &[Value], s: &Settings, custom_tools: &[Value]) -> Value {
     let mut body = serde_json::Map::new();
     body.insert("model".into(), json!(s.model));
     body.insert("messages".into(), json!(messages));
@@ -324,7 +324,7 @@ pub fn build_agent_body(messages: &[Value], s: &Settings) -> Value {
     body.insert("stream".into(), json!(false));
     body.insert(
         "tools".into(),
-        json!(crate::editor_tools::tool_definitions()),
+        crate::editor_tools::merge_tool_definitions(custom_tools),
     );
     apply_inference_settings(&mut body, s);
     Value::Object(body)
@@ -584,11 +584,12 @@ pub async fn agent_turn(
     app: &tauri::AppHandle,
     messages: Vec<Value>,
     settings: &Settings,
+    custom_tools: &[Value],
 ) -> Result<AgentTurnResponse, LlmError> {
-    match agent_turn_streaming(app, messages.clone(), settings).await {
+    match agent_turn_streaming(app, messages.clone(), settings, custom_tools).await {
         Ok(response) => Ok(response),
         Err(LlmError::HttpStatus(_)) | Err(LlmError::InvalidResponse) => {
-            agent_turn_blocking(messages, settings).await
+            agent_turn_blocking(messages, settings, custom_tools).await
         }
         Err(err) => Err(err),
     }
@@ -598,12 +599,13 @@ async fn agent_turn_streaming(
     app: &tauri::AppHandle,
     messages: Vec<Value>,
     settings: &Settings,
+    custom_tools: &[Value],
 ) -> Result<AgentTurnResponse, LlmError> {
     use futures_util::StreamExt;
 
     use crate::events::emit_llm_reasoning_token;
 
-    let mut body = build_agent_body(&messages, settings);
+    let mut body = build_agent_body(&messages, settings, custom_tools);
     if let Some(obj) = body.as_object_mut() {
         obj.insert("stream".into(), json!(true));
     }
@@ -670,8 +672,9 @@ async fn agent_turn_streaming(
 async fn agent_turn_blocking(
     messages: Vec<Value>,
     settings: &Settings,
+    custom_tools: &[Value],
 ) -> Result<AgentTurnResponse, LlmError> {
-    let body = build_agent_body(&messages, settings);
+    let body = build_agent_body(&messages, settings, custom_tools);
 
     let response = http_client()
         .post(&settings.api_url)
@@ -1670,10 +1673,28 @@ mod tests {
     fn build_agent_body_includes_tools_and_messages() {
         let s = settings_with_prompt("");
         let messages = vec![json!({"role": "user", "content": "edit line 1"})];
-        let body = build_agent_body(&messages, &s);
+        let body = build_agent_body(&messages, &s, &[]);
         assert_eq!(body["stream"], false);
         assert!(body.get("tools").and_then(|v| v.as_array()).is_some());
         assert_eq!(body["messages"], json!(messages));
+    }
+
+    #[test]
+    fn build_agent_body_merges_custom_tools() {
+        let s = settings_with_prompt("");
+        let messages = vec![json!({"role": "user", "content": "run greet"})];
+        let custom = vec![json!({
+            "type": "function",
+            "function": {
+                "name": "greet",
+                "description": "Say hello",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        })];
+        let body = build_agent_body(&messages, &s, &custom);
+        let tools = body["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.last().unwrap()["function"]["name"], "greet");
     }
 
     #[test]

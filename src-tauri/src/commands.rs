@@ -253,6 +253,17 @@ pub async fn save_file(
     Ok(())
 }
 
+/// Delete the file at `path` from disk.
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    let pb = validate_path(&path)?;
+
+    tokio::task::spawn_blocking(move || std::fs::remove_file(&pb))
+        .await
+        .map_err(|e| format!("background task failed: {e}"))?
+        .map_err(|e| format!("could not delete file: {e}"))
+}
+
 // -----------------------------------------------------------------------------
 // call_llm (Req 15.3, 14.1, 14.3, 14.4, 14.5)
 // -----------------------------------------------------------------------------
@@ -298,8 +309,11 @@ pub async fn agent_turn(
     app: tauri::AppHandle,
     messages: Vec<serde_json::Value>,
     settings: Settings,
+    custom_tools: Option<Vec<serde_json::Value>>,
 ) -> Result<llm_client::AgentTurnResponse, String> {
-    llm_client::agent_turn(&app, messages, &settings)
+    let raw = custom_tools.unwrap_or_default();
+    let parsed = crate::editor_tools::parse_custom_tool_definitions(&raw)?;
+    llm_client::agent_turn(&app, messages, &settings, &parsed)
         .await
         .map_err(<LlmError as Into<String>>::into)
 }

@@ -91,6 +91,7 @@ import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
 import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
 import * as inferencePanel from "./inference_panel.js";
+import { initToolEditor, getToolFileStatus } from "./tool_editor.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
 // dropped into the WebView console) can reach it without a separate
@@ -240,8 +241,16 @@ function renderStatus() {
       ? document.getElementById("buffer")
       : null;
   const value = buffer && typeof buffer.value === "string" ? buffer.value : "";
+  const toolStatus = getToolFileStatus();
+  let path = editor.currentFilePath();
+  if (toolStatus.path) {
+    const toolLabel = toolStatus.path + (toolStatus.dirty ? " *" : "");
+    const toolCount =
+      toolStatus.toolCount > 0 ? ` · ${toolStatus.toolCount} tool${toolStatus.toolCount !== 1 ? "s" : ""}` : "";
+    path = path && path.length > 0 ? `${path}  ·  ${toolLabel}${toolCount}` : `${toolLabel}${toolCount}`;
+  }
   renderStatusBar({
-    path: editor.currentFilePath(),
+    path,
     charCount: codePointLength(value),
     model: statusState.model,
     dirty: editor.isDirty(),
@@ -556,6 +565,10 @@ export async function bootstrap() {
 
   chat.initializeChat();
   await inferencePanel.initializeInferencePanel();
+  initToolEditor();
+  document.addEventListener("tool-file-changed", () => {
+    renderStatus();
+  });
 
   // 3. Initial Status_Bar: Untitled, 0 chars, model fallback per
   // Req 9.4 ("(no model)"). The model name is replaced after settings

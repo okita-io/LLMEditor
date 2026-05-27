@@ -6,7 +6,7 @@
       "id": "R3eFK",
       "x": 0,
       "y": 0,
-      "name": "LLIMEdit — Main Window",
+      "name": "LLIMEdit — Tool Use Sandbox",
       "width": 1600,
       "height": 1200,
       "fill": "$bg-primary",
@@ -176,7 +176,7 @@
                           "fill": "$text-primary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "Improve the greeting function to handle empty names and add JSDoc.",
+                          "content": "Improve the greet tool to handle empty names and update its schema.",
                           "lineHeight": 1.5,
                           "fontFamily": "$font-ui",
                           "fontSize": 13,
@@ -216,7 +216,7 @@
                           "fill": "$text-primary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "I'll update the function with input validation and documentation. Applying changes to the document on the right →",
+                          "content": "I'll update the greet implementation and schema. Applying changes to the document and tool editor →",
                           "lineHeight": 1.5,
                           "fontFamily": "$font-ui",
                           "fontSize": 13,
@@ -362,7 +362,7 @@
                               "height": 14,
                               "iconFontName": "hammer",
                               "iconFontFamily": "lucide",
-                              "fill": "$text-muted"
+                              "fill": "$success"
                             },
                             {
                               "type": "icon_font",
@@ -1400,161 +1400,120 @@
               "children": [
                 {
                   "type": "frame",
-                  "id": "CcD4z",
-                  "name": "Column Ruler",
+                  "id": "docBufPane",
+                  "name": "Document Buffer Pane",
                   "width": "fill_container",
-                  "height": 22,
-                  "fill": "$bg-secondary",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "bottom": 1
-                    },
-                    "fill": "$border"
-                  },
-                  "padding": [
-                    0,
-                    16,
-                    0,
-                    56
-                  ],
-                  "alignItems": "center",
+                  "height": "fill_container",
+                  "fill": "$bg-primary",
+                  "layout": "vertical",
                   "children": [
                     {
-                      "type": "text",
-                      "id": "SofKF",
-                      "fill": "$text-muted",
-                      "content": "    5    10    15    20    25    30    35    40    45    50    55    60    65    70",
-                      "lineHeight": 1,
-                      "fontFamily": "$font-mono",
-                      "fontSize": 10,
-                      "fontWeight": "normal"
+                      "type": "frame",
+                      "id": "CcD4z",
+                      "name": "Column Ruler",
+                      "width": "fill_container",
+                      "height": 22,
+                      "fill": "$bg-secondary",
+                      "stroke": {
+                        "align": "inside",
+                        "thickness": {
+                          "bottom": 1
+                        },
+                        "fill": "$border"
+                      },
+                      "padding": [
+                        0,
+                        16,
+                        0,
+                        56
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SofKF",
+                          "fill": "$text-muted",
+                          "content": "    5    10    15    20    25    30    35    40    45    50    55    60    65    70",
+                          "lineHeight": 1,
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     },
                     {
                       "type": "frame",
-                      "id": "AzLrX",
+                      "id": "B1lBi",
+                      "name": "Editor Body",
                       "width": "fill_container",
-                      "height": 6,
-                      "gap": 40,
-                      "padding": [
-                        0,
-                        0,
-                        0,
-                        40
-                      ],
-                      "alignItems": "end",
+                      "height": "fill_container",
+                      "fill": "$bg-primary",
                       "children": [
                         {
                           "type": "frame",
-                          "id": "b1MOFw",
-                          "width": 1,
-                          "height": 6,
-                          "fill": "$border"
+                          "id": "NlUEm",
+                          "name": "Line Numbers",
+                          "width": 48,
+                          "height": "fill_container",
+                          "fill": "$bg-secondary",
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": {
+                              "right": 1
+                            },
+                            "fill": "$border"
+                          },
+                          "layout": "vertical",
+                          "padding": [
+                            16,
+                            10,
+                            16,
+                            0
+                          ],
+                          "alignItems": "end",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "lGJPw",
+                              "fill": "$text-muted",
+                              "content": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20",
+                              "lineHeight": 1.6,
+                              "textAlign": "right",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 14,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         },
                         {
                           "type": "frame",
-                          "id": "p9aPU4",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "bFeio",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "F8GNv",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "cCnBb",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "gbPhK",
-                          "width": 1,
-                          "height": 6,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "WWFs2",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "WUrNm",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "VEX73",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "k0wNs",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "Dha4N",
-                          "width": 1,
-                          "height": 6,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "JlR6W",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "x1DhrX",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "RIcJU",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "f1KC0",
-                          "width": 1,
-                          "height": 3,
-                          "fill": "$border"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "GArqF",
-                          "width": 1,
-                          "height": 6,
-                          "fill": "$border"
+                          "id": "ZwytZ",
+                          "name": "Code Area",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "fill": "$bg-primary",
+                          "layout": "vertical",
+                          "padding": [
+                            16,
+                            16,
+                            16,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "BxtbP",
+                              "name": "Editor Content",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "// ── function ─────────────────────────────\nasync function greet(args, ctx) {\n  return { ok: true, result: `Hello, ${args.name}!` };\n}\n\n// ── schema ───────────────────────────────\n{\n  \"type\": \"function\",\n  \"function\": {\n    \"name\": \"greet\",\n    \"description\": \"Return a greeting.\",\n    \"parameters\": { \"type\": \"object\", \"properties\": { \"name\": { \"type\": \"string\" } }, \"required\": [\"name\"] }\n  }\n}\n\n// ── function ─────────────────────────────\nasync function capitalize(args, ctx) {\n  return { ok: true, result: args.text.toUpperCase() };\n}\n\n// ── schema ───────────────────────────────\n{ \"type\": \"function\", \"function\": { \"name\": \"capitalize\", ... } }",
+                              "lineHeight": 1.6,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -1562,129 +1521,357 @@
                 },
                 {
                   "type": "frame",
-                  "id": "B1lBi",
-                  "name": "Editor Body",
+                  "id": "toolPaneDivH",
+                  "name": "Tool Pane Divider",
                   "width": "fill_container",
-                  "height": "fill_container",
+                  "height": 4,
+                  "fill": "$accent"
+                },
+                {
+                  "type": "frame",
+                  "id": "toolEdPane",
+                  "name": "Tool Editor Pane",
+                  "width": "fill_container",
+                  "height": 320,
                   "fill": "$bg-primary",
+                  "layout": "vertical",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "NlUEm",
-                      "name": "Line Numbers",
-                      "width": 48,
+                      "id": "toolFileBar",
+                      "name": "Tool File Bar",
+                      "width": "fill_container",
+                      "height": 86,
                       "fill": "$bg-secondary",
                       "stroke": {
                         "align": "inside",
                         "thickness": {
-                          "right": 1
+                          "bottom": 1
                         },
                         "fill": "$border"
                       },
                       "layout": "vertical",
+                      "gap": 8,
                       "padding": [
-                        16,
-                        10,
-                        16,
-                        0
+                        8,
+                        10
                       ],
-                      "alignItems": "end",
                       "children": [
                         {
-                          "type": "text",
-                          "id": "lGJPw",
-                          "fill": "$text-muted",
-                          "content": "1",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
+                          "type": "frame",
+                          "id": "toolFileNameRow",
+                          "name": "Tool Filename Field",
+                          "width": "fill_container",
+                          "height": 30,
+                          "fill": "$bg-primary",
+                          "cornerRadius": "$radius-md",
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "$border"
+                          },
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "toolFileNameLbl",
+                              "fill": "$text-muted",
+                              "content": "Tool file:",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "toolFileNameVal",
+                              "name": "tool filename",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "greeting-tools.lmtool",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         },
                         {
-                          "type": "text",
-                          "id": "WuutV",
-                          "fill": "$text-muted",
-                          "content": "2",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
-                        },
-                        {
-                          "type": "text",
-                          "id": "YOkHj",
-                          "fill": "$accent",
-                          "content": "3",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "600"
-                        },
-                        {
-                          "type": "text",
-                          "id": "CzSHm",
-                          "fill": "$text-muted",
-                          "content": "4",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
-                        },
-                        {
-                          "type": "text",
-                          "id": "VEAv0",
-                          "fill": "$text-muted",
-                          "content": "5",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
-                        },
-                        {
-                          "type": "text",
-                          "id": "yRSs3",
-                          "fill": "$text-muted",
-                          "content": "6",
-                          "lineHeight": 1.6,
-                          "textAlign": "right",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
+                          "type": "frame",
+                          "id": "toolFileControls",
+                          "name": "Tool File Controls",
+                          "width": "fill_container",
+                          "height": 32,
+                          "gap": 8,
+                          "justifyContent": "start",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "toolLoadBtn",
+                              "name": "Load",
+                              "height": 32,
+                              "fill": "$accent",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                0,
+                                14
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolLoadTxt",
+                                  "fill": "#ffffff",
+                                  "content": "Load",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "toolSaveBtn",
+                              "name": "Save",
+                              "height": 32,
+                              "fill": "$accent",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                0,
+                                14
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolSaveTxt",
+                                  "fill": "#ffffff",
+                                  "content": "Save",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "toolSaveAsBtn",
+                              "name": "Save As...",
+                              "height": 32,
+                              "fill": "$accent",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                0,
+                                14
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolSaveAsTxt",
+                                  "fill": "#ffffff",
+                                  "content": "Save as...",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "toolDeleteBtn",
+                              "name": "Delete",
+                              "height": 32,
+                              "fill": "$danger",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                0,
+                                14
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolDeleteTxt",
+                                  "fill": "#ffffff",
+                                  "content": "Delete",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "ZwytZ",
-                      "name": "Code Area",
+                      "id": "toolSplitRow",
+                      "name": "Tool Split Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "$bg-primary",
-                      "layout": "vertical",
-                      "padding": [
-                        16,
-                        16,
-                        16,
-                        12
-                      ],
                       "children": [
                         {
-                          "type": "text",
-                          "id": "BxtbP",
-                          "name": "Editor Content",
-                          "fill": "$text-primary",
-                          "textGrowth": "fixed-width",
+                          "type": "frame",
+                          "id": "toolImplPane",
+                          "name": "Implementation (JS)",
                           "width": "fill_container",
-                          "content": "function greet(name) {\n  return `Hello, ${name}!`;\n}\n\n// Document content — edits from chat appear here",
-                          "lineHeight": 1.6,
-                          "fontFamily": "$font-mono",
-                          "fontSize": 14,
-                          "fontWeight": "normal"
+                          "height": "fill_container",
+                          "fill": "$bg-primary",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "toolImplHdr",
+                              "name": "Impl Header",
+                              "width": "fill_container",
+                              "height": 26,
+                              "fill": "$bg-secondary",
+                              "stroke": {
+                                "align": "inside",
+                                "thickness": {
+                                  "bottom": 1
+                                },
+                                "fill": "$border"
+                              },
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolImplLbl",
+                                  "fill": "$text-muted",
+                                  "content": "IMPLEMENTATION (JS)",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "toolImplBody",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "fill": "$bg-primary",
+                              "padding": [
+                                10,
+                                12
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolImplCode",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "async function run(args, ctx) {\n  const name = args.name ?? \"world\";\n  return { ok: true, result: `Hello, ${name}!` };\n}",
+                                  "lineHeight": 1.6,
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "toolSchemaDivV",
+                          "name": "Tool Schema Divider",
+                          "width": 1,
+                          "height": "fill_container",
+                          "fill": "$border"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "toolSchemaPane",
+                          "name": "Schema (JSON)",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "fill": "$bg-primary",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "toolSchemaHdr",
+                              "name": "Schema Header",
+                              "width": "fill_container",
+                              "height": 26,
+                              "fill": "$bg-secondary",
+                              "stroke": {
+                                "align": "inside",
+                                "thickness": {
+                                  "bottom": 1
+                                },
+                                "fill": "$border"
+                              },
+                              "padding": [
+                                0,
+                                10
+                              ],
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolSchemaLbl",
+                                  "fill": "$text-muted",
+                                  "content": "SCHEMA (JSON)",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "toolSchemaStatus",
+                                  "fill": "$success",
+                                  "content": "✓ 1 tool",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "toolSchemaBody",
+                              "width": "fill_container",
+                              "height": "fill_container",
+                              "fill": "$bg-primary",
+                              "padding": [
+                                10,
+                                12
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "toolSchemaCode",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "{\n  \"type\": \"function\",\n  \"function\": {\n    \"name\": \"greet\",\n    \"description\": \"Return a greeting.\",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": { \"name\": { \"type\": \"string\" } },\n      \"required\": [\"name\"]\n    }\n  }\n}",
+                                  "lineHeight": 1.6,
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     }
@@ -1719,7 +1906,7 @@
               "type": "text",
               "id": "OOCt1",
               "fill": "$text-muted",
-              "content": "~/Documents/notes.md",
+              "content": "~/Documents/greeting-tools.lmtool  ·  2 tool pairs",
               "fontFamily": "$font-ui",
               "fontSize": 11,
               "fontWeight": "normal"
@@ -1944,6 +2131,216 @@
                 {
                   "type": "text",
                   "id": "V1Rxc2",
+                  "fill": "#ffffff",
+                  "content": "Delete",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ToolOvrModal",
+      "x": 2697,
+      "y": 440,
+      "name": "Warning Modal - Tool Overwrite",
+      "width": 480,
+      "fill": "$modal-bg",
+      "cornerRadius": "$radius-md",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$border"
+      },
+      "layout": "vertical",
+      "gap": 20,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "ToolOvrTitle",
+          "name": "Warning",
+          "fill": "$text-primary",
+          "content": "Warning",
+          "fontFamily": "$font-ui",
+          "fontSize": 18,
+          "fontWeight": "600"
+        },
+        {
+          "type": "text",
+          "id": "ToolOvrMsg",
+          "name": "message",
+          "fill": "$text-primary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "A tool file named \"greeting-tools.lmtool\" already exists. Overwrite it with the current implementation and schema pair?",
+          "lineHeight": 1.5,
+          "fontFamily": "$font-ui",
+          "fontSize": 13,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "frame",
+          "id": "ToolOvrActions",
+          "width": "fill_container",
+          "gap": 12,
+          "justifyContent": "end",
+          "children": [
+            {
+              "type": "frame",
+              "id": "ToolOvrCancel",
+              "height": 36,
+              "fill": "#00000000",
+              "cornerRadius": "$radius-sm",
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "$border"
+              },
+              "padding": [
+                0,
+                20
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ToolOvrCancelTxt",
+                  "fill": "$text-muted",
+                  "content": "Cancel",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ToolOvrSave",
+              "height": 36,
+              "fill": "$accent",
+              "cornerRadius": "$radius-sm",
+              "padding": [
+                0,
+                20
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ToolOvrSaveTxt",
+                  "fill": "#ffffff",
+                  "content": "Save",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ToolDelModal",
+      "x": 2697,
+      "y": 640,
+      "name": "Warning Modal - Tool Delete",
+      "width": 480,
+      "fill": "$modal-bg",
+      "cornerRadius": "$radius-md",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$border"
+      },
+      "layout": "vertical",
+      "gap": 20,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "ToolDelTitle",
+          "name": "Warning",
+          "fill": "$text-primary",
+          "content": "Warning",
+          "fontFamily": "$font-ui",
+          "fontSize": 18,
+          "fontWeight": "600"
+        },
+        {
+          "type": "text",
+          "id": "ToolDelMsg",
+          "name": "message",
+          "fill": "$text-primary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Delete the tool file \"greeting-tools.lmtool\" from disk? This removes the saved implementation and schema pair.",
+          "lineHeight": 1.5,
+          "fontFamily": "$font-ui",
+          "fontSize": 13,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "frame",
+          "id": "ToolDelActions",
+          "width": "fill_container",
+          "gap": 12,
+          "justifyContent": "end",
+          "children": [
+            {
+              "type": "frame",
+              "id": "ToolDelCancel",
+              "height": 36,
+              "fill": "#00000000",
+              "cornerRadius": "$radius-sm",
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "$border"
+              },
+              "padding": [
+                0,
+                20
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ToolDelCancelTxt",
+                  "fill": "$text-muted",
+                  "content": "Cancel",
+                  "fontFamily": "$font-ui",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ToolDelConfirm",
+              "height": 36,
+              "fill": "$danger",
+              "cornerRadius": "$radius-sm",
+              "padding": [
+                0,
+                20
+              ],
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "ToolDelConfirmTxt",
                   "fill": "#ffffff",
                   "content": "Delete",
                   "fontFamily": "$font-ui",

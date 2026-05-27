@@ -147,13 +147,15 @@ export const AGENT_TOOL_DEFINITIONS = Object.freeze([
 /**
  * @param {object} settings
  * @param {Array<Record<string, unknown>>} messages
+ * @param {Array<Record<string, unknown>>} [extraTools]  — custom tools to append
  * @returns {Record<string, unknown>}
  */
-export function buildAgentRequestPreview(settings, messages) {
-  return buildLmStudioChatBody(settings, messages, {
-    stream: false,
-    tools: [...AGENT_TOOL_DEFINITIONS],
-  });
+export function buildAgentRequestPreview(settings, messages, extraTools = []) {
+  const tools =
+    extraTools.length > 0
+      ? [...AGENT_TOOL_DEFINITIONS, ...extraTools]
+      : [...AGENT_TOOL_DEFINITIONS];
+  return buildLmStudioChatBody(settings, messages, { stream: false, tools });
 }
 
 /**

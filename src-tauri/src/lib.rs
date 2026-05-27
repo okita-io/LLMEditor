@@ -107,6 +107,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             crate::commands::open_file,
             crate::commands::save_file,
+            crate::commands::delete_file,
             crate::commands::call_llm,
             crate::commands::agent_turn,
             crate::commands::stream_llm,

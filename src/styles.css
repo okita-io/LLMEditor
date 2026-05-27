@@ -1236,9 +1236,229 @@ button.chat-cap-icon:disabled {
   color: var(--text-muted);
 }
 
-.modal-footer button[data-action="save"] {
+.modal-footer button[data-action="save"],
+.modal-footer button[data-action="confirm"] {
   border: 0;
   background: var(--accent);
   color: #ffffff;
   font-weight: 600;
+}
+
+/* ─── Document buffer wrapper (top half of #document-editor) ─────────────── */
+#doc-buffer-pane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Horizontal resize handle (between doc buffer and tool panes) ─────── */
+.split-divider-h {
+  flex: 0 0 4px;
+  background: var(--border);
+  cursor: row-resize;
+  transition: background 0.1s;
+}
+
+.split-divider-h:hover {
+  background: var(--accent);
+}
+
+/* ─── Tool editor pane (bottom half of #document-editor) ────────────────── */
+/* flex-basis is left as the CSS default (auto) so JS can set an explicit    */
+/* height after the first drag without fighting a hardcoded flex-basis.       */
+#tool-editor-pane {
+  flex: 0 0 auto;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#tool-split-row {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tool-file-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-file-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.tool-file-label {
+  flex: 0 0 auto;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tool-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.tool-file-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tool-file-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tool-file-btn-primary {
+  background: var(--accent);
+}
+
+.tool-file-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.tool-file-btn-danger {
+  background: var(--bg-secondary);
+}
+
+.tool-file-btn-danger:hover:not(:disabled) {
+  background: var(--warning);
+}
+
+.tool-file-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─── Tool sub-panes (impl + schema) ─────────────────────────────────────── */
+.tool-sub-pane {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tool-pane-header {
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tool-pane-label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-schema-status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+.tool-schema-status[data-state="valid"] {
+  color: var(--success);
+}
+
+.tool-schema-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.tool-code-editor {
+  flex: 1 1 auto;
+  /* Textareas have a browser-intrinsic minimum height; override it so the
+     flex layout can shrink them to fill exactly the remaining pane height. */
+  min-height: 0;
+  height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: auto;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: var(--line-height-editor);
+  white-space: pre;
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+
+.tool-code-editor:focus {
+  outline: none;
+}
+
+.tool-code-editor::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+  white-space: pre;
+}
+
+/* Vertical split divider cursor override when used inside tool-editor-pane */
+#tool-editor-pane .split-divider {
+  cursor: col-resize;
 }
