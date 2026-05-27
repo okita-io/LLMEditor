@@ -17,6 +17,18 @@ import {
   refreshContextWindow,
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
+import {
+  buildLmStudioChatBody,
+} from "./lm_studio_inference.js";
+import {
+  AGENT_TOOL_DEFINITIONS,
+} from "./agent_request_preview.js";
+import {
+  getCustomTools,
+  hasCustomTools,
+  isCustomTool,
+  executeCustomTool,
+} from "./tool_editor.js";
 
 const MAX_TURNS = 16;
 
@@ -143,6 +155,96 @@ function resolveLiveContextWindow(ctx, bufferEl, fallbackAnchor) {
   return null;
 }
 
+/**
+ * Parse a raw OpenAI-compat chat-completions response envelope into the
+ * same shape that the Rust `agent_turn` command returns.
+ *
+ * @param {unknown} envelope
+ * @returns {{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null, reasoning: string|null }}
+ */
+function parseAgentTurnEnvelope(envelope) {
+  const choice =
+    envelope &&
+    typeof envelope === "object" &&
+    Array.isArray(envelope.choices) &&
+    envelope.choices[0];
+
+  if (!choice || typeof choice !== "object") {
+    throw new Error("No response choices from model");
+  }
+
+  const message =
+    choice.message && typeof choice.message === "object" ? choice.message : {};
+
+  let content = null;
+  if (typeof message.content === "string" && message.content.length > 0) {
+    content = message.content;
+  }
+
+  /** @type {Array<{ id: string, name: string, arguments: string }>} */
+  const tool_calls = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const tc of message.tool_calls) {
+      if (!tc || typeof tc !== "object") continue;
+      const id = typeof tc.id === "string" ? tc.id : "";
+      const fn = tc.function;
+      if (!fn || typeof fn !== "object") continue;
+      const name = typeof fn.name === "string" ? fn.name : "";
+      const args = typeof fn.arguments === "string" ? fn.arguments : "{}";
+      if (id.length > 0 && name.length > 0) {
+        tool_calls.push({ id, name, arguments: args });
+      }
+    }
+  }
+
+  const finish_reason =
+    typeof choice.finish_reason === "string" ? choice.finish_reason : null;
+  const reasoning =
+    message.reasoning && typeof message.reasoning === "string"
+      ? message.reasoning
+      : null;
+
+  return { content, tool_calls, finish_reason, reasoning };
+}
+
+/**
+ * JS-native agent turn — bypasses the Rust IPC bridge so custom tools can
+ * be appended to the request. Used when `hasCustomTools()` is true.
+ *
+ * @param {Array<Record<string, unknown>>} messages
+ * @param {object} settings
+ * @param {Array<Record<string, unknown>>} customTools
+ * @returns {Promise<{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null, reasoning: string|null }>}
+ */
+async function nativeAgentTurn(messages, settings, customTools) {
+  const allTools = [...AGENT_TOOL_DEFINITIONS, ...customTools];
+  const body = buildLmStudioChatBody(settings, messages, {
+    stream: false,
+    tools: allTools,
+  });
+
+  const apiUrl =
+    typeof settings.api_url === "string" && settings.api_url.length > 0
+      ? settings.api_url
+      : "http://localhost:1234/v1/chat/completions";
+
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `agent turn failed: HTTP ${res.status}${detail ? " " + detail : ""}`.trim()
+    );
+  }
+
+  const envelope = await res.json();
+  return parseAgentTurnEnvelope(envelope);
+}
+
 export async function runAgent(options) {
   const { userMessage, settings, bufferEl, callbacks, documentPath = null } = options;
   const getContext = callbacks.getDocumentContext;
@@ -172,7 +274,8 @@ export async function runAgent(options) {
   ];
 
   const systemPrompt = buildSystemPrompt(settings);
-  const initialRequestBody = buildAgentRequestPreview(settings, messages);
+  const customTools = getCustomTools();
+  const initialRequestBody = buildAgentRequestPreview(settings, messages, customTools);
 
   callbacks.onAgentContext?.({
     userContent,
@@ -190,7 +293,7 @@ export async function runAgent(options) {
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const turnNumber = turn + 1;
-    const requestBody = buildAgentRequestPreview(settings, messages);
+    const requestBody = buildAgentRequestPreview(settings, messages, customTools);
 
     callbacks.onAgentTurnRequest?.({
       turn: turnNumber,
@@ -199,7 +302,9 @@ export async function runAgent(options) {
     });
     callbacks.onReasoningStreamStart?.({ turn: turnNumber });
 
-    const response = await api.agentTurn(messages, settings);
+    const response = hasCustomTools()
+      ? await nativeAgentTurn(messages, settings, customTools)
+      : await api.agentTurn(messages, settings);
 
     callbacks.onReasoningStreamEnd?.({
       turn: turnNumber,
@@ -251,14 +356,17 @@ export async function runAgent(options) {
           parsedArgs = {};
         }
 
+        // eslint-disable-next-line no-await-in-loop
         const result = parseError
           ? { ok: false, error: parseError, changed: false }
-          : editorTools.executeTool(toolCall.name, parsedArgs, ctx);
+          : isCustomTool(toolCall.name)
+            ? await executeCustomTool(toolCall.name, parsedArgs, ctx)
+            : editorTools.executeTool(toolCall.name, parsedArgs, ctx);
 
         if (
           result.ok === true &&
           result.changed !== false &&
-          MUTATING_TOOLS.has(toolCall.name)
+          (MUTATING_TOOLS.has(toolCall.name) || isCustomTool(toolCall.name))
         ) {
           mutatingToolCount += 1;
         }

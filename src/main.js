@@ -91,6 +91,7 @@ import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
 import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
 import * as inferencePanel from "./inference_panel.js";
+import { initToolEditor } from "./tool_editor.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
 // dropped into the WebView console) can reach it without a separate
@@ -556,6 +557,7 @@ export async function bootstrap() {
 
   chat.initializeChat();
   await inferencePanel.initializeInferencePanel();
+  initToolEditor();
 
   // 3. Initial Status_Bar: Untitled, 0 chars, model fallback per
   // Req 9.4 ("(no model)"). The model name is replaced after settings

@@ -115,23 +115,68 @@
       <div id="split-divider" class="split-divider" aria-hidden="true"></div>
 
       <main id="document-editor">
-        <div id="column-ruler" class="column-ruler" aria-hidden="true">
-          <span class="column-ruler-labels"></span>
+        <!-- Document buffer pane (top, flex-resizable) -->
+        <div id="doc-buffer-pane">
+          <div id="column-ruler" class="column-ruler" aria-hidden="true">
+            <span class="column-ruler-labels"></span>
+          </div>
+          <div id="editor-body" class="editor-body">
+            <div id="line-gutter" class="line-gutter" aria-hidden="true"></div>
+            <div class="editor-buffer-wrap">
+              <div id="selection-overlay" class="selection-overlay" aria-hidden="true"></div>
+              <textarea
+                id="buffer"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                wrap="soft"
+                autofocus
+              ></textarea>
+              <div id="buffer-mirror" aria-hidden="true"></div>
+            </div>
+          </div>
         </div>
-        <div id="editor-body" class="editor-body">
-          <div id="line-gutter" class="line-gutter" aria-hidden="true"></div>
-          <div class="editor-buffer-wrap">
-            <div id="selection-overlay" class="selection-overlay" aria-hidden="true"></div>
+
+        <!-- Horizontal resize handle -->
+        <div id="tool-pane-divider" class="split-divider-h" aria-hidden="true"></div>
+
+        <!-- Tool editor pane (bottom) — JS impl on left, JSON schema on right -->
+        <div id="tool-editor-pane">
+          <!-- Left: JS implementation editor -->
+          <div id="tool-impl-pane" class="tool-sub-pane">
+            <div class="tool-pane-header">
+              <span class="tool-pane-label">Implementation (JS)</span>
+            </div>
             <textarea
-              id="buffer"
+              id="tool-impl-editor"
+              class="tool-code-editor"
               spellcheck="false"
               autocomplete="off"
               autocorrect="off"
               autocapitalize="off"
-              wrap="soft"
-              autofocus
+              placeholder="// async function run(args, ctx) {&#10;//   return { ok: true, result: args.input };&#10;// }"
             ></textarea>
-            <div id="buffer-mirror" aria-hidden="true"></div>
+          </div>
+
+          <!-- Vertical resize handle between the two tool sub-panes -->
+          <div id="tool-schema-divider" class="split-divider" aria-hidden="true" style="cursor:col-resize;"></div>
+
+          <!-- Right: JSON schema editor -->
+          <div id="tool-schema-pane" class="tool-sub-pane">
+            <div class="tool-pane-header">
+              <span class="tool-pane-label">Schema (JSON)</span>
+              <span id="tool-schema-status" class="tool-schema-status" data-state="idle"></span>
+            </div>
+            <textarea
+              id="tool-schema-editor"
+              class="tool-code-editor"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              placeholder='{&#10;  "type": "function",&#10;  "function": {&#10;    "name": "my_tool",&#10;    "description": "What this tool does.",&#10;    "parameters": {&#10;      "type": "object",&#10;      "properties": {&#10;        "input": { "type": "string" }&#10;      },&#10;      "required": ["input"]&#10;    }&#10;  }&#10;}'
+            ></textarea>
           </div>
         </div>
       </main>

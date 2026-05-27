@@ -1242,3 +1242,123 @@ button.chat-cap-icon:disabled {
   color: #ffffff;
   font-weight: 600;
 }
+
+/* ─── Document buffer wrapper (top half of #document-editor) ─────────────── */
+#doc-buffer-pane {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Horizontal resize handle (between doc buffer and tool panes) ─────── */
+.split-divider-h {
+  flex: 0 0 4px;
+  background: var(--border);
+  cursor: row-resize;
+  transition: background 0.1s;
+}
+
+.split-divider-h:hover {
+  background: var(--accent);
+}
+
+/* ─── Tool editor pane (bottom half of #document-editor) ────────────────── */
+#tool-editor-pane {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ─── Tool sub-panes (impl + schema) ─────────────────────────────────────── */
+.tool-sub-pane {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tool-pane-header {
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tool-pane-label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-schema-status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+.tool-schema-status[data-state="valid"] {
+  color: var(--success);
+}
+
+.tool-schema-status[data-state="error"] {
+  color: var(--danger);
+}
+
+.tool-code-editor {
+  flex: 1 1 auto;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: auto;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: var(--line-height-editor);
+  white-space: pre;
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+
+.tool-code-editor:focus {
+  outline: none;
+}
+
+.tool-code-editor::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+  white-space: pre;
+}
+
+/* Vertical split divider cursor override when used inside tool-editor-pane */
+#tool-editor-pane .split-divider {
+  cursor: col-resize;
+}
