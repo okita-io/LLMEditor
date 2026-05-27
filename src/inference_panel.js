@@ -348,7 +348,7 @@ async function persistSettingsPayload(payload) {
  * @param {string} confirmLabel
  * @returns {Promise<boolean>}
  */
-function showConfirmModal(title, message, confirmLabel) {
+export function showConfirmModal(title, message, confirmLabel) {
   if (typeof document === "undefined") return Promise.resolve(false);
 
   ensureConfirmModalBuilt();

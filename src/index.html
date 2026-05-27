@@ -141,10 +141,30 @@
         <!-- Horizontal resize handle -->
         <div id="tool-pane-divider" class="split-divider-h" aria-hidden="true"></div>
 
-        <!-- Tool editor pane (bottom) — JS impl on left, JSON schema on right -->
+        <!-- Tool editor pane (bottom) — file bar + JS impl | JSON schema -->
         <div id="tool-editor-pane">
-          <!-- Left: JS implementation editor -->
-          <div id="tool-impl-pane" class="tool-sub-pane">
+          <div id="tool-file-bar" class="tool-file-bar">
+            <label class="tool-file-name-row" for="tool-file-name">
+              <span class="tool-file-label">Tool file:</span>
+              <input
+                id="tool-file-name"
+                class="tool-file-name"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="Untitled.lmtool"
+              />
+            </label>
+            <div class="tool-file-controls">
+              <button id="tool-load" type="button" class="tool-file-btn tool-file-btn-primary">Load</button>
+              <button id="tool-save" type="button" class="tool-file-btn tool-file-btn-primary">Save</button>
+              <button id="tool-save-as" type="button" class="tool-file-btn tool-file-btn-primary">Save as…</button>
+              <button id="tool-delete" type="button" class="tool-file-btn tool-file-btn-danger" disabled>Delete</button>
+            </div>
+          </div>
+
+          <div id="tool-split-row" class="tool-split-row">
+            <div id="tool-impl-pane" class="tool-sub-pane">
             <div class="tool-pane-header">
               <span class="tool-pane-label">Implementation (JS)</span>
             </div>
@@ -177,6 +197,7 @@
               autocapitalize="off"
               placeholder='{&#10;  "type": "function",&#10;  "function": {&#10;    "name": "my_tool",&#10;    "description": "What this tool does.",&#10;    "parameters": {&#10;      "type": "object",&#10;      "properties": {&#10;        "input": { "type": "string" }&#10;      },&#10;      "required": ["input"]&#10;    }&#10;  }&#10;}'
             ></textarea>
+          </div>
           </div>
         </div>
       </main>

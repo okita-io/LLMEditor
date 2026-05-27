@@ -18,14 +18,7 @@ import {
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 import {
-  buildLmStudioChatBody,
-} from "./lm_studio_inference.js";
-import {
-  AGENT_TOOL_DEFINITIONS,
-} from "./agent_request_preview.js";
-import {
   getCustomTools,
-  hasCustomTools,
   isCustomTool,
   executeCustomTool,
 } from "./tool_editor.js";
@@ -158,6 +151,7 @@ function resolveLiveContextWindow(ctx, bufferEl, fallbackAnchor) {
 /**
  * Parse a raw OpenAI-compat chat-completions response envelope into the
  * same shape that the Rust `agent_turn` command returns.
+ * Kept for tests and debugging previews.
  *
  * @param {unknown} envelope
  * @returns {{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null, reasoning: string|null }}
@@ -207,44 +201,6 @@ function parseAgentTurnEnvelope(envelope) {
   return { content, tool_calls, finish_reason, reasoning };
 }
 
-/**
- * JS-native agent turn — bypasses the Rust IPC bridge so custom tools can
- * be appended to the request. Used when `hasCustomTools()` is true.
- *
- * @param {Array<Record<string, unknown>>} messages
- * @param {object} settings
- * @param {Array<Record<string, unknown>>} customTools
- * @returns {Promise<{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null, reasoning: string|null }>}
- */
-async function nativeAgentTurn(messages, settings, customTools) {
-  const allTools = [...AGENT_TOOL_DEFINITIONS, ...customTools];
-  const body = buildLmStudioChatBody(settings, messages, {
-    stream: false,
-    tools: allTools,
-  });
-
-  const apiUrl =
-    typeof settings.api_url === "string" && settings.api_url.length > 0
-      ? settings.api_url
-      : "http://localhost:1234/v1/chat/completions";
-
-  const res = await fetch(apiUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(
-      `agent turn failed: HTTP ${res.status}${detail ? " " + detail : ""}`.trim()
-    );
-  }
-
-  const envelope = await res.json();
-  return parseAgentTurnEnvelope(envelope);
-}
-
 export async function runAgent(options) {
   const { userMessage, settings, bufferEl, callbacks, documentPath = null } = options;
   const getContext = callbacks.getDocumentContext;
@@ -274,8 +230,7 @@ export async function runAgent(options) {
   ];
 
   const systemPrompt = buildSystemPrompt(settings);
-  const customTools = getCustomTools();
-  const initialRequestBody = buildAgentRequestPreview(settings, messages, customTools);
+  const initialRequestBody = buildAgentRequestPreview(settings, messages, getCustomTools());
 
   callbacks.onAgentContext?.({
     userContent,
@@ -293,6 +248,7 @@ export async function runAgent(options) {
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const turnNumber = turn + 1;
+    const customTools = getCustomTools();
     const requestBody = buildAgentRequestPreview(settings, messages, customTools);
 
     callbacks.onAgentTurnRequest?.({
@@ -302,9 +258,7 @@ export async function runAgent(options) {
     });
     callbacks.onReasoningStreamStart?.({ turn: turnNumber });
 
-    const response = hasCustomTools()
-      ? await nativeAgentTurn(messages, settings, customTools)
-      : await api.agentTurn(messages, settings);
+    const response = await api.agentTurn(messages, settings, customTools);
 
     callbacks.onReasoningStreamEnd?.({
       turn: turnNumber,
@@ -434,4 +388,5 @@ export const _internal = {
   MAX_TURNS,
   DEFAULT_TOOL_SYSTEM,
   resolveLiveContextWindow,
+  parseAgentTurnEnvelope,
 };

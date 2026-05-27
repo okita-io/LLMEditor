@@ -125,6 +125,69 @@ pub fn tool_definitions() -> Value {
     ])
 }
 
+/// Validate and normalize custom tool definitions from the frontend.
+pub fn parse_custom_tool_definitions(tools: &[Value]) -> Result<Vec<Value>, String> {
+    let mut out = Vec::with_capacity(tools.len());
+    for (index, tool) in tools.iter().enumerate() {
+        out.push(validate_custom_tool(tool, index)?);
+    }
+    Ok(out)
+}
+
+/// Merge built-in editor tools with validated custom tools for the LLM request.
+pub fn merge_tool_definitions(custom_tools: &[Value]) -> Value {
+    let mut merged = tool_definitions()
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    merged.extend(custom_tools.iter().cloned());
+    json!(merged)
+}
+
+fn validate_custom_tool(tool: &Value, index: usize) -> Result<Value, String> {
+    let label = format!("custom tool #{index}");
+    let obj = tool
+        .as_object()
+        .ok_or_else(|| format!("{label}: expected an object"))?;
+
+    let tool_type = obj
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("function");
+    if tool_type != "function" {
+        return Err(format!("{label}: type must be \"function\""));
+    }
+
+    let function = obj
+        .get("function")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| format!("{label}: missing function object"))?;
+
+    let name = function
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("{label}: function.name is required"))?;
+
+    if function.get("parameters").is_none() {
+        return Err(format!("{label}: function.parameters is required"));
+    }
+
+    Ok(json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": function.get("description").cloned().unwrap_or(json!("")),
+            "parameters": function.get("parameters").cloned().unwrap_or(json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })),
+        }
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +215,40 @@ mod tests {
         ] {
             assert!(names.contains(&expected), "missing tool {expected}");
         }
+    }
+
+    #[test]
+    fn parse_custom_tool_definitions_validates_and_normalizes() {
+        let custom = vec![json!({
+            "type": "function",
+            "function": {
+                "name": "greet",
+                "description": "Say hello",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string" } },
+                    "required": ["name"]
+                }
+            }
+        })];
+        let parsed = parse_custom_tool_definitions(&custom).expect("parsed");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0]["function"]["name"], "greet");
+    }
+
+    #[test]
+    fn merge_tool_definitions_appends_custom_tools() {
+        let custom = vec![json!({
+            "type": "function",
+            "function": {
+                "name": "greet",
+                "description": "Say hello",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        })];
+        let merged = merge_tool_definitions(&custom);
+        let arr = merged.as_array().expect("array");
+        assert_eq!(arr.len(), 8);
+        assert_eq!(arr.last().unwrap()["function"]["name"], "greet");
     }
 }

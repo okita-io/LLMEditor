@@ -2,18 +2,18 @@
 // Copyright (c) 2026 okita.io
 //
 // tool_editor.js — live JS implementation + JSON schema editor panes.
-//
-// Exports:
-//   initToolEditor()                         — bind DOM and wire interactions
-//   getCustomTools()                         — parsed tool definitions array
-//   hasCustomTools()                         — true when ≥1 valid tool loaded
-//   isCustomTool(name)                       — true when name matches custom tool
-//   executeCustomTool(name, args, ctx)       — run the JS impl pane code
+
+import * as api from "./api.js";
+import { showConfirmModal } from "./inference_panel.js";
 
 /** @type {HTMLTextAreaElement | null} */
 let schemaEditorEl = null;
 /** @type {HTMLTextAreaElement | null} */
 let implEditorEl = null;
+/** @type {HTMLInputElement | null} */
+let fileNameEl = null;
+/** @type {HTMLButtonElement | null} */
+let deleteBtnEl = null;
 /** @type {HTMLElement | null} */
 let schemaStatusEl = null;
 /** @type {HTMLElement | null} */
@@ -25,10 +25,23 @@ let docBufferPaneEl = null;
 /** @type {HTMLElement | null} */
 let toolEditorPaneEl = null;
 
+/** @type {string | null} */
+let currentToolPath = null;
+/** @type {boolean} */
+let toolDirty = false;
+
 /** @type {Array<Record<string, unknown>>} */
 let parsedTools = [];
 /** @type {boolean} */
 let schemaValid = true;
+
+/** @type {(() => Promise<string|null>) | null} */
+let openDialogOverride = null;
+/** @type {((ext: string) => Promise<string|null>) | null} */
+let saveDialogOverride = null;
+
+const TOOL_FILE_EXT = ".lmtool";
+const TOOL_FILE_VERSION = 1;
 
 // ─── Schema validation ────────────────────────────────────────────────────────
 
@@ -40,6 +53,7 @@ function revalidateSchema() {
     parsedTools = [];
     schemaValid = true;
     updateSchemaStatus("", "idle");
+    notifyToolFileChanged();
     return;
   }
 
@@ -53,9 +67,9 @@ function revalidateSchema() {
     parsedTools = [];
     schemaValid = false;
     const msg = err instanceof Error ? err.message : String(err);
-    // Trim the message to the first line so it fits in the header strip.
     updateSchemaStatus(`✗ ${msg.split("\n")[0]}`, "error");
   }
+  notifyToolFileChanged();
 }
 
 /**
@@ -68,33 +82,285 @@ function updateSchemaStatus(msg, state) {
   schemaStatusEl.setAttribute("data-state", state);
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+function markToolDirty() {
+  toolDirty = true;
+  syncToolFileControls();
+  notifyToolFileChanged();
+}
+
+function clearToolDirty() {
+  toolDirty = false;
+  syncToolFileControls();
+  notifyToolFileChanged();
+}
+
+function notifyToolFileChanged() {
+  if (typeof document === "undefined") return;
+  document.dispatchEvent(
+    new CustomEvent("tool-file-changed", {
+      detail: getToolFileStatus(),
+    })
+  );
+}
+
+function basename(path) {
+  if (typeof path !== "string" || path.length === 0) return "";
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] || path;
+}
+
+function ensureToolExtension(path) {
+  if (typeof path !== "string" || path.length === 0) return path;
+  const lower = path.toLowerCase();
+  return lower.endsWith(TOOL_FILE_EXT) ? path : `${path}${TOOL_FILE_EXT}`;
+}
+
+function syncToolFileControls() {
+  if (fileNameEl) {
+    const display =
+      typeof currentToolPath === "string" && currentToolPath.length > 0
+        ? basename(currentToolPath)
+        : fileNameEl.value.trim() || "";
+    if (document.activeElement !== fileNameEl) {
+      fileNameEl.value = display;
+    }
+  }
+  if (deleteBtnEl) {
+    deleteBtnEl.disabled = !(typeof currentToolPath === "string" && currentToolPath.length > 0);
+  }
+}
 
 /**
- * Return the parsed custom tool definitions (OpenAI format).
- * Empty array when the schema pane is blank or contains invalid JSON.
- *
- * @returns {Array<Record<string, unknown>>}
+ * @returns {{ path: string|null, dirty: boolean, pairCount: number, toolCount: number, schemaValid: boolean }}
  */
+export function getToolFileStatus() {
+  return {
+    path: currentToolPath,
+    dirty: toolDirty,
+    pairCount: hasCustomTools() ? 1 : 0,
+    toolCount: parsedTools.length,
+    schemaValid,
+  };
+}
+
+// ─── Tool file format ─────────────────────────────────────────────────────────
+
+/**
+ * @param {string} raw
+ * @returns {{ implementation: string, schema: string }}
+ */
+export function parseToolFileContents(raw) {
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  if (!trimmed) {
+    return { implementation: "", schema: "" };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { implementation: "", schema: trimmed };
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { implementation: "", schema: trimmed };
+  }
+
+  if (
+    parsed.version === TOOL_FILE_VERSION ||
+    Object.prototype.hasOwnProperty.call(parsed, "implementation") ||
+    Object.prototype.hasOwnProperty.call(parsed, "schema")
+  ) {
+    const implementation =
+      typeof parsed.implementation === "string" ? parsed.implementation : "";
+    let schema = "";
+    if (parsed.schema !== undefined && parsed.schema !== null) {
+      schema =
+        typeof parsed.schema === "string"
+          ? parsed.schema
+          : JSON.stringify(parsed.schema, null, 2);
+    }
+    return { implementation, schema };
+  }
+
+  return { implementation: "", schema: trimmed };
+}
+
+/**
+ * @returns {string}
+ */
+export function serializeToolFile() {
+  const implementation = implEditorEl ? implEditorEl.value : "";
+  const schemaRaw = schemaEditorEl ? schemaEditorEl.value.trim() : "";
+
+  let schema = null;
+  if (schemaRaw.length > 0) {
+    try {
+      schema = JSON.parse(schemaRaw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Schema must be valid JSON before saving: ${msg}`);
+    }
+  }
+
+  return `${JSON.stringify(
+    {
+      version: TOOL_FILE_VERSION,
+      implementation,
+      schema,
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function applyToolFileContents(contents) {
+  const { implementation, schema } = parseToolFileContents(contents);
+  if (implEditorEl) implEditorEl.value = implementation;
+  if (schemaEditorEl) schemaEditorEl.value = schema;
+  revalidateSchema();
+  clearToolDirty();
+}
+
+async function pathExists(path) {
+  try {
+    await api.openFile(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function invokeOpenDialog() {
+  if (typeof openDialogOverride === "function") {
+    return await openDialogOverride();
+  }
+  const tauri = globalThis.__TAURI__;
+  if (!tauri || !tauri.dialog || typeof tauri.dialog.open !== "function") {
+    return null;
+  }
+  const result = await tauri.dialog.open({
+    multiple: false,
+    filters: [
+      { name: "LLIMEdit tools", extensions: ["lmtool"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (result === null || result === undefined) return null;
+  if (Array.isArray(result)) return result.length > 0 ? result[0] : null;
+  return typeof result === "string" ? result : null;
+}
+
+async function invokeSaveDialog() {
+  if (typeof saveDialogOverride === "function") {
+    return await saveDialogOverride(TOOL_FILE_EXT);
+  }
+  const tauri = globalThis.__TAURI__;
+  if (!tauri || !tauri.dialog || typeof tauri.dialog.save !== "function") {
+    return null;
+  }
+  const result = await tauri.dialog.save({
+    filters: [
+      { name: "LLIMEdit tools", extensions: ["lmtool"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+    defaultPath:
+      typeof currentToolPath === "string" && currentToolPath.length > 0
+        ? currentToolPath
+        : undefined,
+  });
+  if (result === null || result === undefined) return null;
+  return typeof result === "string" ? result : null;
+}
+
+/**
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+export async function loadToolFile(path) {
+  const contents = await api.openFile(path);
+  applyToolFileContents(contents);
+  currentToolPath = path;
+  syncToolFileControls();
+  notifyToolFileChanged();
+  return true;
+}
+
+/**
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+export async function saveToolFileToPath(path) {
+  const normalized = ensureToolExtension(path);
+  const contents = serializeToolFile();
+  await api.saveFile(normalized, contents);
+  currentToolPath = normalized;
+  clearToolDirty();
+  syncToolFileControls();
+  return true;
+}
+
+async function onToolLoad() {
+  const picked = await invokeOpenDialog();
+  if (!picked) return;
+  await loadToolFile(picked);
+}
+
+async function onToolSave() {
+  if (typeof currentToolPath === "string" && currentToolPath.length > 0) {
+    await saveToolFileToPath(currentToolPath);
+    return;
+  }
+  await onToolSaveAs();
+}
+
+async function onToolSaveAs() {
+  let picked = await invokeSaveDialog();
+  if (!picked) return;
+  picked = ensureToolExtension(picked);
+
+  if (await pathExists(picked)) {
+    const confirmed = await showConfirmModal(
+      "Warning",
+      `There is already a tool file named "${basename(picked)}" do you want to overwrite it?`,
+      "Save"
+    );
+    if (!confirmed) return;
+  }
+
+  await saveToolFileToPath(picked);
+}
+
+async function onToolDelete() {
+  if (!(typeof currentToolPath === "string" && currentToolPath.length > 0)) return;
+
+  const name = basename(currentToolPath);
+  const confirmed = await showConfirmModal(
+    "Warning",
+    `Are you sure you want to delete the tool file named "${name}"?`,
+    "Delete"
+  );
+  if (!confirmed) return;
+
+  await api.deleteFile(currentToolPath);
+  currentToolPath = null;
+  if (implEditorEl) implEditorEl.value = "";
+  if (schemaEditorEl) schemaEditorEl.value = "";
+  revalidateSchema();
+  clearToolDirty();
+  syncToolFileControls();
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
 export function getCustomTools() {
   return parsedTools;
 }
 
-/**
- * True when at least one valid custom tool is loaded.
- *
- * @returns {boolean}
- */
 export function hasCustomTools() {
   return schemaValid && parsedTools.length > 0;
 }
 
-/**
- * True when `name` matches a custom tool in the schema pane.
- *
- * @param {string} name
- * @returns {boolean}
- */
 export function isCustomTool(name) {
   for (const tool of parsedTools) {
     const fn = tool.function;
@@ -104,18 +370,6 @@ export function isCustomTool(name) {
   return false;
 }
 
-/**
- * Execute the custom tool implementation from the JS pane.
- *
- * The JS pane must define an async `run(args, ctx)` function:
- *   - `args`: the parsed arguments the LLM passed
- *   - `ctx`:  { text: string, path: string|null } — current document
- *
- * @param {string} name  Tool name (used in error messages only)
- * @param {Record<string, unknown>} args
- * @param {{ text: string, path: string|null }} ctx
- * @returns {Promise<{ ok: boolean, result?: unknown, error?: string, changed?: boolean }>}
- */
 export async function executeCustomTool(name, args, ctx) {
   const code = implEditorEl ? implEditorEl.value.trim() : "";
 
@@ -128,11 +382,9 @@ export async function executeCustomTool(name, args, ctx) {
   }
 
   try {
-    // Wrap the user code in an AsyncFunction so top-level await is allowed.
     const AsyncFunction = /** @type {typeof Function} */ (
       Object.getPrototypeOf(async function () {}).constructor
     );
-    // Expects the pane to define: async function run(args, ctx) { ... }
     const fn = new AsyncFunction("args", "ctx", `${code}\nreturn await run(args, ctx);`);
     const result = await fn(args, ctx);
     if (result == null || typeof result !== "object") {
@@ -172,7 +424,7 @@ function initHorizontalResize() {
     const containerH = container ? container.offsetHeight : startDocH + startToolH + 4;
     const dividerH = toolPaneDividerEl ? toolPaneDividerEl.offsetHeight : 4;
     const minDoc = 80;
-    const minTool = 80;
+    const minTool = 120;
     const newDocH = Math.max(minDoc, Math.min(containerH - minTool - dividerH, startDocH + delta));
     const newToolH = Math.max(minTool, containerH - newDocH - dividerH);
 
@@ -201,9 +453,12 @@ function initVerticalResize() {
   let startW = 0;
   /** @type {HTMLElement | null} */
   let implPaneEl = null;
+  /** @type {HTMLElement | null} */
+  let schemaPaneEl = null;
 
   schemaToolDividerEl.addEventListener("mousedown", (e) => {
     implPaneEl = document.getElementById("tool-impl-pane");
+    schemaPaneEl = document.getElementById("tool-schema-pane");
     if (!implPaneEl) return;
     dragging = true;
     startX = e.clientX;
@@ -217,32 +472,66 @@ function initVerticalResize() {
     if (!dragging || !implPaneEl) return;
     const delta = e.clientX - startX;
     const container = implPaneEl.parentElement;
-    const maxW = container ? container.offsetWidth - 150 : Infinity;
+    const containerW = container ? container.offsetWidth : startW * 2;
+    const maxW = containerW - 150;
     const newW = Math.max(150, Math.min(maxW, startW + delta));
-    implPaneEl.style.flex = "none";
-    implPaneEl.style.width = `${newW}px`;
+    implPaneEl.style.flex = `0 0 ${newW}px`;
+    if (schemaPaneEl) {
+      schemaPaneEl.style.flex = "1 1 auto";
+    }
   });
 
   document.addEventListener("mouseup", () => {
     if (!dragging) return;
     dragging = false;
     implPaneEl = null;
+    schemaPaneEl = null;
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
   });
 }
 
-// ─── Bootstrap ───────────────────────────────────────────────────────────────
+function wireToolFileBar() {
+  document.getElementById("tool-load")?.addEventListener("click", () => {
+    onToolLoad().catch((err) => console.error("[tool_editor] load failed", err));
+  });
+  document.getElementById("tool-save")?.addEventListener("click", () => {
+    onToolSave().catch((err) => console.error("[tool_editor] save failed", err));
+  });
+  document.getElementById("tool-save-as")?.addEventListener("click", () => {
+    onToolSaveAs().catch((err) => console.error("[tool_editor] save as failed", err));
+  });
+  deleteBtnEl?.addEventListener("click", () => {
+    onToolDelete().catch((err) => console.error("[tool_editor] delete failed", err));
+  });
 
-/**
- * Initialize the tool editor panes. Call once from main.js bootstrap.
- */
+  fileNameEl?.addEventListener("input", () => {
+    if (!fileNameEl) return;
+    const typed = fileNameEl.value.trim();
+    if (typed.length === 0) {
+      currentToolPath = null;
+    } else if (typeof currentToolPath === "string" && currentToolPath.length > 0) {
+      const sep = currentToolPath.includes("\\") ? "\\" : "/";
+      const prefix = currentToolPath.slice(0, currentToolPath.lastIndexOf(sep) + 1);
+      currentToolPath = prefix ? `${prefix}${typed}` : typed;
+    }
+    syncToolFileControls();
+    notifyToolFileChanged();
+  });
+}
+
 export function initToolEditor() {
   schemaEditorEl = /** @type {HTMLTextAreaElement | null} */ (
     document.getElementById("tool-schema-editor")
   );
   implEditorEl = /** @type {HTMLTextAreaElement | null} */ (
     document.getElementById("tool-impl-editor")
+  );
+  fileNameEl = /** @type {HTMLInputElement | null} */ (
+    document.getElementById("tool-file-name")
+  );
+  deleteBtnEl = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById("tool-delete")
   );
   schemaStatusEl = document.getElementById("tool-schema-status");
   toolPaneDividerEl = document.getElementById("tool-pane-divider");
@@ -255,9 +544,50 @@ export function initToolEditor() {
     return;
   }
 
-  schemaEditorEl.addEventListener("input", revalidateSchema);
+  schemaEditorEl.addEventListener("input", () => {
+    revalidateSchema();
+    markToolDirty();
+  });
+  implEditorEl.addEventListener("input", markToolDirty);
   revalidateSchema();
+  wireToolFileBar();
+  syncToolFileControls();
 
   initHorizontalResize();
   initVerticalResize();
 }
+
+export const _internal = {
+  parseToolFileContents,
+  serializeToolFile,
+  loadToolFile,
+  saveToolFileToPath,
+  onToolLoad,
+  onToolSave,
+  onToolSaveAs,
+  onToolDelete,
+  revalidateSchema,
+  getCurrentToolPath: () => currentToolPath,
+  isToolDirty: () => toolDirty,
+  setDialogOverrides(overrides = {}) {
+    if (!overrides || typeof overrides !== "object") {
+      openDialogOverride = null;
+      saveDialogOverride = null;
+      return;
+    }
+    openDialogOverride = overrides.open || null;
+    saveDialogOverride = overrides.save || null;
+  },
+  resetForTests() {
+    currentToolPath = null;
+    toolDirty = false;
+    parsedTools = [];
+    schemaValid = true;
+    openDialogOverride = null;
+    saveDialogOverride = null;
+    if (schemaEditorEl) schemaEditorEl.value = "";
+    if (implEditorEl) implEditorEl.value = "";
+    revalidateSchema();
+    syncToolFileControls();
+  },
+};

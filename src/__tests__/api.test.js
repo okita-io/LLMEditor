@@ -150,7 +150,21 @@ describe("api.agentTurn", () => {
 
     expect(result).toBe(response);
     expect(calls).toEqual([
-      { cmd: "agent_turn", args: { messages, settings } },
+      { cmd: "agent_turn", args: { messages, settings, customTools: [] } },
+    ]);
+  });
+
+  it("forwards custom tools to agent_turn", async () => {
+    const response = { content: "ok", tool_calls: [], finish_reason: "stop" };
+    const calls = installInvokeStub(() => Promise.resolve(response));
+    const messages = [{ role: "user", content: "hello" }];
+    const settings = { model: "local-model" };
+    const customTools = [{ type: "function", function: { name: "greet", parameters: { type: "object" } } }];
+
+    await api.agentTurn(messages, settings, customTools);
+
+    expect(calls).toEqual([
+      { cmd: "agent_turn", args: { messages, settings, customTools } },
     ]);
   });
 });
