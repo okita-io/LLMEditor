@@ -22,6 +22,8 @@ let toolPaneDividerEl = null;
 let schemaToolDividerEl = null;
 /** @type {HTMLElement | null} */
 let docBufferPaneEl = null;
+/** @type {HTMLElement | null} */
+let toolEditorPaneEl = null;
 
 /** @type {Array<Record<string, unknown>>} */
 let parsedTools = [];
@@ -150,12 +152,14 @@ function initHorizontalResize() {
 
   let dragging = false;
   let startY = 0;
-  let startH = 0;
+  let startDocH = 0;
+  let startToolH = 0;
 
   toolPaneDividerEl.addEventListener("mousedown", (e) => {
     dragging = true;
     startY = e.clientY;
-    startH = docBufferPaneEl.offsetHeight;
+    startDocH = docBufferPaneEl.offsetHeight;
+    startToolH = toolEditorPaneEl ? toolEditorPaneEl.offsetHeight : 200;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "row-resize";
     e.preventDefault();
@@ -165,10 +169,20 @@ function initHorizontalResize() {
     if (!dragging) return;
     const delta = e.clientY - startY;
     const container = docBufferPaneEl.parentElement;
-    const maxH = container ? container.offsetHeight - 100 : Infinity;
-    const newH = Math.max(80, Math.min(maxH, startH + delta));
+    const containerH = container ? container.offsetHeight : startDocH + startToolH + 4;
+    const dividerH = toolPaneDividerEl ? toolPaneDividerEl.offsetHeight : 4;
+    const minDoc = 80;
+    const minTool = 80;
+    const newDocH = Math.max(minDoc, Math.min(containerH - minTool - dividerH, startDocH + delta));
+    const newToolH = Math.max(minTool, containerH - newDocH - dividerH);
+
     docBufferPaneEl.style.flex = "none";
-    docBufferPaneEl.style.height = `${newH}px`;
+    docBufferPaneEl.style.height = `${newDocH}px`;
+
+    if (toolEditorPaneEl) {
+      toolEditorPaneEl.style.flex = "none";
+      toolEditorPaneEl.style.height = `${newToolH}px`;
+    }
   });
 
   document.addEventListener("mouseup", () => {
@@ -234,6 +248,7 @@ export function initToolEditor() {
   toolPaneDividerEl = document.getElementById("tool-pane-divider");
   schemaToolDividerEl = document.getElementById("tool-schema-divider");
   docBufferPaneEl = document.getElementById("doc-buffer-pane");
+  toolEditorPaneEl = document.getElementById("tool-editor-pane");
 
   if (!schemaEditorEl || !implEditorEl) {
     console.warn("[tool_editor] pane elements not found — skipping init");

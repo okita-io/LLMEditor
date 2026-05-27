@@ -1265,11 +1265,14 @@ button.chat-cap-icon:disabled {
 }
 
 /* ─── Tool editor pane (bottom half of #document-editor) ────────────────── */
+/* flex-basis is left as the CSS default (auto) so JS can set an explicit    */
+/* height after the first drag without fighting a hardcoded flex-basis.       */
 #tool-editor-pane {
-  flex: 0 0 200px;
+  flex: 0 0 auto;
+  height: 200px;
   display: flex;
   flex-direction: row;
-  min-height: 0;
+  min-height: 80px;
   min-width: 0;
   overflow: hidden;
 }
@@ -1331,6 +1334,10 @@ button.chat-cap-icon:disabled {
 
 .tool-code-editor {
   flex: 1 1 auto;
+  /* Textareas have a browser-intrinsic minimum height; override it so the
+     flex layout can shrink them to fill exactly the remaining pane height. */
+  min-height: 0;
+  height: 0;
   width: 100%;
   margin: 0;
   padding: 10px 12px;
