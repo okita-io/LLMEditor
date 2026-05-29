@@ -189,6 +189,196 @@ export function parseAgentTurnResponse(envelope) {
 }
 
 /**
+ * Dispatch an `editor:reasoning-stream-token` DOM event carrying a single
+ * reasoning fragment. Mirrors the production bridge in `main.js`, which
+ * forwards the backend's `tauri://llm-reasoning-token` events onto the same
+ * DOM channel the chat panel listens on. No-op outside a DOM environment.
+ *
+ * @param {string} fragment
+ * @returns {void}
+ */
+function emitReasoningToken(fragment) {
+  if (typeof fragment !== "string" || fragment.length === 0) return;
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  document.dispatchEvent(
+    new CustomEvent("editor:reasoning-stream-token", {
+      detail: { fragment },
+    })
+  );
+}
+
+/**
+ * Accumulate a single streamed SSE delta object into the in-progress turn
+ * and emit any reasoning fragments. Mirrors the Rust `agent_stream` parser
+ * in `src-tauri/src/llm_client.rs`: reasoning arrives on `delta.reasoning`
+ * or `delta.reasoning_content`, assistant text on `delta.content`, and tool
+ * calls on `delta.tool_calls` (indexed, with incremental argument strings).
+ *
+ * @param {{ content: string, reasoning: string, toolCalls: Map<number, { id: string, name: string, arguments: string }>, finishReason: string|null }} acc
+ * @param {Record<string, unknown>} chunk
+ * @returns {void}
+ */
+function pushStreamChunk(acc, chunk) {
+  const choice =
+    chunk && Array.isArray(chunk.choices) ? chunk.choices[0] : null;
+  if (!choice || typeof choice !== "object") return;
+
+  if (typeof choice.finish_reason === "string") {
+    acc.finishReason = choice.finish_reason;
+  }
+
+  const delta = choice.delta;
+  if (!delta || typeof delta !== "object") return;
+
+  for (const field of [delta.reasoning, delta.reasoning_content]) {
+    if (typeof field === "string" && field.length > 0) {
+      acc.reasoning += field;
+      emitReasoningToken(field);
+    }
+  }
+
+  if (typeof delta.content === "string" && delta.content.length > 0) {
+    acc.content += delta.content;
+  }
+
+  if (Array.isArray(delta.tool_calls)) {
+    for (const tc of delta.tool_calls) {
+      if (!tc || typeof tc !== "object") continue;
+      const index = Number.isInteger(tc.index) ? tc.index : 0;
+      const entry =
+        acc.toolCalls.get(index) ?? { id: "", name: "", arguments: "" };
+      if (typeof tc.id === "string" && tc.id.length > 0) entry.id = tc.id;
+      const fn = tc.function;
+      if (fn && typeof fn === "object") {
+        if (typeof fn.name === "string" && fn.name.length > 0) {
+          entry.name = fn.name;
+        }
+        if (typeof fn.arguments === "string") {
+          entry.arguments += fn.arguments;
+        }
+      }
+      acc.toolCalls.set(index, entry);
+    }
+  }
+}
+
+/**
+ * Streaming variant of {@link liveAgentTurn}. POSTs with `stream: true`,
+ * parses the Server-Sent Events response, emits `editor:reasoning-stream-token`
+ * DOM events as reasoning fragments arrive, and resolves with the assembled
+ * turn (including the aggregated `reasoning` string). Faithful to the
+ * production path in `src-tauri/src/llm_client.rs::agent_turn_streaming`.
+ *
+ * @param {Array<Record<string, unknown>>} messages
+ * @param {Record<string, unknown>} settings
+ * @param {ReturnType<typeof getSmokeConfig>} config
+ * @returns {Promise<{ content: string|null, tool_calls: Array<{ id: string, name: string, arguments: string }>, finish_reason: string|null, reasoning: string|null }>}
+ */
+export async function liveAgentTurnStreaming(messages, settings, config) {
+  const model =
+    typeof settings.model === "string" && settings.model.length > 0
+      ? settings.model
+      : await resolveSmokeModel(config.apiUrl, config.model);
+
+  const mergedSettings = { ...settings, model, api_url: config.apiUrl };
+  const body = buildLmStudioChatBody(mergedSettings, messages, {
+    stream: true,
+    tools: editorToolDefinitions(),
+  });
+  lastRequestBody = body;
+
+  const res = await fetchWithTimeout(
+    config.apiUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    config.timeoutMs
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`agent turn failed: HTTP ${res.status} ${detail}`.trim());
+  }
+  if (!res.body || typeof res.body.getReader !== "function") {
+    throw new Error("streaming response body is not readable");
+  }
+
+  const acc = {
+    content: "",
+    reasoning: "",
+    /** @type {Map<number, { id: string, name: string, arguments: string }>} */
+    toolCalls: new Map(),
+    /** @type {string|null} */
+    finishReason: null,
+  };
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = false;
+
+  while (!done) {
+    // eslint-disable-next-line no-await-in-loop
+    const { value, done: streamDone } = await reader.read();
+    if (streamDone) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const record = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const payload = extractSsePayload(record);
+      if (payload === null) continue;
+      if (payload === "[DONE]") {
+        done = true;
+        break;
+      }
+      try {
+        pushStreamChunk(acc, JSON.parse(payload));
+      } catch {
+        // Ignore malformed keep-alive or partial records.
+      }
+    }
+  }
+
+  // Flush any trailing buffered record (some servers omit the final blank line).
+  const tail = extractSsePayload(buffer);
+  if (tail !== null && tail !== "[DONE]") {
+    try {
+      pushStreamChunk(acc, JSON.parse(tail));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return {
+    content: acc.content.length > 0 ? acc.content : null,
+    tool_calls: [...acc.toolCalls.values()].filter(
+      (tc) => tc.id.length > 0 && tc.name.length > 0
+    ),
+    finish_reason: acc.finishReason,
+    reasoning: acc.reasoning.length > 0 ? acc.reasoning : null,
+  };
+}
+
+/**
+ * Extract the `data:` payload from a single SSE record, or `null` when the
+ * record is a comment/keep-alive or carries no data line.
+ *
+ * @param {string} record
+ * @returns {string|null}
+ */
+function extractSsePayload(record) {
+  const trimmed = record.trim();
+  if (trimmed.length === 0) return null;
+  if (!trimmed.startsWith("data:")) return null;
+  return trimmed.slice("data:".length).trimStart();
+}
+
+/**
  * POST a simple chat completion (no tools) and return assistant text.
  *
  * @param {Array<Record<string, unknown>>} messages
@@ -226,8 +416,14 @@ export async function liveSimpleCompletion(messages, settings, config) {
 /**
  * Install a Tauri IPC stub that forwards agent_turn to live LM Studio.
  *
+ * When `options.stream` is true the bridge routes `agent_turn` through
+ * {@link liveAgentTurnStreaming}, which parses the SSE response and emits
+ * `editor:reasoning-stream-token` DOM events as reasoning fragments arrive —
+ * faithful to the production `tauri://llm-reasoning-token` bridge in
+ * `main.js`. Otherwise it uses the non-streaming {@link liveAgentTurn}.
+ *
  * @param {ReturnType<typeof getSmokeConfig>} config
- * @param {{ settings?: Record<string, unknown> }} [options]
+ * @param {{ settings?: Record<string, unknown>, stream?: boolean }} [options]
  * @returns {Promise<{ settings: object, model: string }>}
  */
 export async function installLmStudioBridge(config, options = {}) {
@@ -240,6 +436,7 @@ export async function installLmStudioBridge(config, options = {}) {
     max_tokens: config.maxTokens,
     ...(options.settings || {}),
   });
+  const streaming = options.stream === true;
 
   globalThis.__TAURI__ = {
     core: {
@@ -249,7 +446,9 @@ export async function installLmStudioBridge(config, options = {}) {
             args && typeof args.settings === "object"
               ? { ...settings, ...args.settings }
               : settings;
-          return liveAgentTurn(args.messages, turnSettings, config);
+          return streaming
+            ? liveAgentTurnStreaming(args.messages, turnSettings, config)
+            : liveAgentTurn(args.messages, turnSettings, config);
         }
         if (cmd === "load_settings") {
           return settings;
