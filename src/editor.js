@@ -62,6 +62,8 @@ import { getHistoryForAgent, recordExchange } from "./chat_history.js";
 import { buildContextWindow, refreshContextWindow } from "./context_window.js";
 import { getSelectionForContext } from "./editor_chrome.js";
 import { applyEditorDisplaySettings } from "./editor_display.js";
+import { getTabSpaces, setTabSpaces } from "./editor_tab_settings.js";
+import { registerEditTarget } from "./edit_target.js";
 import * as editorTools from "./editor_tools.js";
 import { executeAgentTool } from "./tool_editor.js";
 import { extractDocumentEdits } from "./document_edits.js";
@@ -77,8 +79,6 @@ let agentActive = false;
 let agentEditGroup = null;
 /** @type {string} */
 let agentEditBuffer = "";
-/** @type {number} Spaces inserted when Tab is pressed (2 or 4). */
-let tabSpaces = 4;
 /** @type {null | {
  *   mode: "insert_at_cursor" | "replace_selection" | "replace_document",
  *   startCursor: number,
@@ -257,7 +257,13 @@ export function initialize() {
 
   if (bufferEl) {
     _attachEventListeners(bufferEl);
-    applyEditorSettings({ tab_spaces: tabSpaces });
+    applyEditorSettings({ tab_spaces: getTabSpaces() });
+    registerEditTarget("document", {
+      undo: () => undo(),
+      redo: () => redo(),
+      elements: [bufferEl],
+      panes: [document.getElementById("doc-buffer-pane")],
+    });
   }
 }
 
@@ -311,12 +317,14 @@ export function currentFilePath() {
 export function applyEditorSettings(settings) {
   const n =
     settings && typeof settings === "object" ? Number(settings.tab_spaces) : NaN;
-  tabSpaces = n === 2 ? 2 : 4;
+  setTabSpaces(n);
   if (bufferEl) {
-    bufferEl.style.tabSize = String(tabSpaces);
+    bufferEl.style.tabSize = String(getTabSpaces());
   }
   applyEditorDisplaySettings(settings);
 }
+
+export { getTabSpaces } from "./editor_tab_settings.js";
 
 /**
  * Apply a single LLM token fragment to the Buffer using the
@@ -2282,7 +2290,7 @@ function _isPrintableTypedKey(e) {
 }
 
 function _insertTabSpaces(el) {
-  const count = tabSpaces === 2 ? 2 : 4;
+  const count = getTabSpaces() === 2 ? 2 : 4;
   const spaces = " ".repeat(count);
   const beforeSelection = _captureSelection();
   const start = beforeSelection.start;

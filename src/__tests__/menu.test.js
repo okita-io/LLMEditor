@@ -37,6 +37,7 @@ import {
 
 import * as editor from "../editor.js";
 import * as api from "../api.js";
+import * as editTarget from "../edit_target.js";
 import * as settingsModal from "../settings_modal.js";
 import * as menu from "../menu.js";
 
@@ -61,6 +62,15 @@ vi.mock("../api.js", () => {
     cancelStream: vi.fn(async () => undefined),
   };
 });
+
+vi.mock("../edit_target.js", () => ({
+  undoActiveEditTarget: vi.fn(),
+  redoActiveEditTarget: vi.fn(),
+  registerEditTarget: vi.fn(),
+  setLastEditTarget: vi.fn(),
+  getLastEditTarget: vi.fn(() => "document"),
+  resetEditTargetsForTests: vi.fn(),
+}));
 
 vi.mock("../settings_modal.js", () => {
   return {
@@ -309,17 +319,17 @@ describe("Keyboard shortcuts on Windows (Ctrl modifier)", () => {
     expect(editor.sendToLLM).toHaveBeenCalledTimes(1);
   });
 
-  it("Ctrl+Z calls editor.undo, Ctrl+Shift+Z and Ctrl+Y call editor.redo", async () => {
+  it("Ctrl+Z calls editTarget.undoActiveEditTarget, Ctrl+Shift+Z and Ctrl+Y call redo", async () => {
     
     menu.buildMenuBar();
     pressKey("z", { ctrl: true });
-    expect(editor.undo).toHaveBeenCalledTimes(1);
+    expect(editTarget.undoActiveEditTarget).toHaveBeenCalledTimes(1);
 
     pressKey("Z", { ctrl: true, shift: true });
-    expect(editor.redo).toHaveBeenCalledTimes(1);
+    expect(editTarget.redoActiveEditTarget).toHaveBeenCalledTimes(1);
 
     pressKey("y", { ctrl: true });
-    expect(editor.redo).toHaveBeenCalledTimes(2);
+    expect(editTarget.redoActiveEditTarget).toHaveBeenCalledTimes(2);
   });
 
   it("plain O / S / L without modifier do nothing", async () => {
@@ -373,7 +383,7 @@ describe("Keyboard shortcuts on macOS (Cmd / metaKey modifier)", () => {
     menu.buildMenuBar();
     pressKey("y", { ctrl: true });
     pressKey("y", { meta: true });
-    expect(editor.redo).not.toHaveBeenCalled();
+    expect(editTarget.redoActiveEditTarget).not.toHaveBeenCalled();
   });
 });
 
@@ -592,18 +602,18 @@ describe("Menu-item click dispatch", () => {
     expect(editor.newFile).toHaveBeenCalledTimes(1);
   });
 
-  it("clicking Edit → Undo fires editor.undo", async () => {
+  it("clicking Edit → Undo fires editTarget.undoActiveEditTarget", async () => {
     
     menu.buildMenuBar();
     document.querySelector('[data-action="undo"]').click();
-    expect(editor.undo).toHaveBeenCalledTimes(1);
+    expect(editTarget.undoActiveEditTarget).toHaveBeenCalledTimes(1);
   });
 
-  it("clicking Edit → Redo fires editor.redo", async () => {
+  it("clicking Edit → Redo fires editTarget.redoActiveEditTarget", async () => {
     
     menu.buildMenuBar();
     document.querySelector('[data-action="redo"]').click();
-    expect(editor.redo).toHaveBeenCalledTimes(1);
+    expect(editTarget.redoActiveEditTarget).toHaveBeenCalledTimes(1);
   });
 });
 

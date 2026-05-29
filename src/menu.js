@@ -40,6 +40,7 @@
 
 import * as editor from "./editor.js";
 import * as api from "./api.js";
+import * as editTarget from "./edit_target.js";
 import * as settingsModal from "./settings_modal.js";
 
 const MENU_BAR_ID = "menu-bar";
@@ -554,10 +555,10 @@ function dispatchAction(action /*, opts */) {
       requestQuit();
       return;
     case ACTIONS.UNDO:
-      editor.undo();
+      editTarget.undoActiveEditTarget();
       return;
     case ACTIONS.REDO:
-      editor.redo();
+      editTarget.redoActiveEditTarget();
       return;
     case ACTIONS.CUT:
       execClipboard("cut");

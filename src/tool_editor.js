@@ -4,10 +4,13 @@
 // tool_editor.js — live JS implementation + JSON schema editor panes.
 
 import * as api from "./api.js";
+import { getTabSpaces } from "./editor_tab_settings.js";
+import { registerEditTarget } from "./edit_target.js";
 import { refreshEditorChrome } from "./editor_chrome.js";
 import { notifyRefresh as notifyEditorDisplayRefresh } from "./editor_display.js";
 import { showConfirmModal } from "./inference_panel.js";
 import { attachCodeHighlight } from "./tool_code_highlight.js";
+import { attachTextareaEditHistory } from "./textarea_edit_history.js";
 
 /** @type {HTMLTextAreaElement | null} */
 let schemaEditorEl = null;
@@ -65,6 +68,11 @@ let saveDialogOverride = null;
 
 const TOOL_FILE_EXT = ".lmtool";
 const TOOL_FILE_VERSION = 1;
+
+/** @type {ReturnType<typeof attachTextareaEditHistory> | null} */
+let implEditHistory = null;
+/** @type {ReturnType<typeof attachTextareaEditHistory> | null} */
+let schemaEditHistory = null;
 
 // ─── Schema validation ────────────────────────────────────────────────────────
 
@@ -278,6 +286,8 @@ function applyToolFileContents(contents) {
   const { implementation, schema } = parseToolFileContents(contents);
   if (implEditorEl) implEditorEl.value = implementation;
   if (schemaEditorEl) schemaEditorEl.value = schema;
+  implEditHistory?.clear();
+  schemaEditHistory?.clear();
   revalidateSchema();
   clearToolDirty();
 }
@@ -406,6 +416,8 @@ async function onToolDelete() {
   currentToolPath = null;
   if (implEditorEl) implEditorEl.value = "";
   if (schemaEditorEl) schemaEditorEl.value = "";
+  implEditHistory?.clear();
+  schemaEditHistory?.clear();
   revalidateSchema();
   clearToolDirty();
   syncToolFileControls();
@@ -745,6 +757,25 @@ export function initToolEditor() {
   attachCodeHighlight(implEditorEl, "javascript");
   attachCodeHighlight(schemaEditorEl, "json");
 
+  implEditHistory?.destroy();
+  schemaEditHistory?.destroy();
+  const historyOptions = { getTabSpaces };
+  implEditHistory = attachTextareaEditHistory(implEditorEl, historyOptions);
+  schemaEditHistory = attachTextareaEditHistory(schemaEditorEl, historyOptions);
+
+  registerEditTarget("tool-impl", {
+    undo: () => implEditHistory?.undo(),
+    redo: () => implEditHistory?.redo(),
+    elements: [implEditorEl],
+    panes: [document.getElementById("tool-impl-pane")],
+  });
+  registerEditTarget("tool-schema", {
+    undo: () => schemaEditHistory?.undo(),
+    redo: () => schemaEditHistory?.redo(),
+    elements: [schemaEditorEl],
+    panes: [document.getElementById("tool-schema-pane")],
+  });
+
   initHorizontalResize();
   initVerticalResize();
 
@@ -786,6 +817,8 @@ export const _internal = {
     compiledImplCache = null;
     openDialogOverride = null;
     saveDialogOverride = null;
+    implEditHistory?.clear();
+    schemaEditHistory?.clear();
     if (schemaEditorEl) schemaEditorEl.value = "";
     if (implEditorEl) implEditorEl.value = "";
     revalidateSchema();
@@ -806,6 +839,8 @@ export const _internal = {
           : "";
     if (schemaEditorEl) schemaEditorEl.value = schemaRaw;
     if (implEditorEl) implEditorEl.value = testImplementationOverride;
+    implEditHistory?.clear();
+    schemaEditHistory?.clear();
     applySchemaFromRaw(schemaRaw);
   },
 };
