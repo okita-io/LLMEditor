@@ -6,6 +6,8 @@
   "description": "LLIMEdit frontend test harness (Vitest + fast-check + jsdom).",
   "type": "module",
   "scripts": {
+    "dev": "bash scripts/kill-dev.sh && cargo tauri dev",
+    "dev:clean": "bash scripts/kill-dev.sh",
     "test": "vitest --run",
     "test:smoke": "LLM_SMOKE=1 vitest --run --config vitest.smoke.config.js"
   },

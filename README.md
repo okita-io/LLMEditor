@@ -45,8 +45,10 @@ The main text buffer stays unstyled; **syntax highlighting** is enabled in the t
 git clone https://github.com/your-org/LLMEditor.git
 cd LLMEditor
 npm install
-cargo tauri dev
+npm run dev
 ```
+
+`npm run dev` kills stale dev processes, starts a Python static server for `src/` on port 1420, then launches Tauri pointed at `http://127.0.0.1:1420`. If the window is blank or you see a port-bind error, run `npm run dev:clean` first, then `npm run dev` again.
 
 Point **Settings → API URL** at your LM Studio server (default `http://localhost:1234/v1/chat/completions`). Use a model with native tool use (e.g. Qwen2.5-Instruct, Llama 3.1+).
 
