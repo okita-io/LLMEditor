@@ -20,6 +20,27 @@ The app ships with **no tools loaded** and **no prompt file open**. Until you lo
 
 The main text buffer stays unstyled; **syntax highlighting** is enabled in the tool **Implementation (JS)** and **Schema (JSON)** panes only.
 
+### Chat panel color codes
+
+The chat column uses color-coded bubbles so you can scan a long agent run. Theme tokens are defined in [`src/styles.css`](src/styles.css) (`:root`).
+
+| Bubble | Label | Border / accent | Meaning |
+|--------|-------|-----------------|---------|
+| **Your message** | Gray (`--text-muted`) | Neutral gray (`--border`) | What you typed in the chat input |
+| **Your message (failed)** | Gray | **Red** (`#f14c4c`) | Send or API error; use **Retry** on the bubble |
+| **Assistant** | Blue (`--accent`, `#569cd6`) | Blue solid | Final model reply (model id as the label) |
+| **LLM input** | Blue | Blue solid | Full request context: system prompt, messages, settings |
+| **Turn request** | Blue | Blue **dashed** | Outgoing payload for one agent turn (subset of LLM input) |
+| **Model (tool turn)** | Yellow (`--warning`, `#dcdcaa`) | Yellow solid | Assistant text emitted *before* tool calls in that turn |
+| **Tool call** | Yellow, `TOOL CALL` | **Amber left stripe** + warm tint | A tool the model is invoking; shows `name({...args})` and formatted arguments |
+| **Tool result** | Teal (`--success`, `#4ec9b0`), `TOOL RESULT` | **Teal left stripe** | Tool finished successfully; invocation repeated at the top |
+| **Tool failed** | Red, `TOOL FAILED` | **Red left stripe** | Tool returned `ok: false` or bad arguments — compare the invocation line to the error summary |
+| **Reasoning** | Purple (`--reasoning`, `#c586c0`) | Purple (glows while streaming) | Model reasoning / thinking stream when enabled |
+
+**Tool invocation line** — On tool call and tool result bubbles, a monospace block shows exactly what the model sent, e.g. `replace_line({"line":1,"text":"hello"})`. Invalid JSON is shown raw so you can spot malformed `tool_calls` without digging into logs.
+
+**Other UI colors** (outside chat bubbles): `--danger` (`#f48771`) for destructive actions; status bar uses `--bg-status` (`#007acc`).
+
 ---
 
 ## Tech stack
