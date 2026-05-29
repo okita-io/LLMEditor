@@ -44,6 +44,11 @@
 import * as api from "./api.js";
 import * as editor from "./editor.js";
 import * as chat from "./chat.js";
+import {
+  EDITOR_FONT_SIZE_DEFAULT,
+  EDITOR_FONT_SIZE_MAX,
+  EDITOR_FONT_SIZE_MIN,
+} from "./editor_display.js";
 import * as inferencePanel from "./inference_panel.js";
 
 /* -------------------------------------------------------------------- */
@@ -89,6 +94,8 @@ const MODAL_FIELDS = Object.freeze([
   "model",
   "replace_mode",
   "tab_spaces",
+  "editor_font_size",
+  "show_whitespace",
 ]);
 
 /** Default settings used when `loadSettings()` rejects on open. */
@@ -97,6 +104,8 @@ const FALLBACK_DEFAULTS = Object.freeze({
   model: "local-model",
   replace_mode: "replace_document",
   tab_spaces: 4,
+  editor_font_size: EDITOR_FONT_SIZE_DEFAULT,
+  show_whitespace: false,
 });
 
 /* -------------------------------------------------------------------- */
@@ -291,6 +300,50 @@ export function validateField(name, rawValue) {
       }
       return { ok: true, value: num };
     }
+    case "editor_font_size": {
+      let num;
+      if (typeof rawValue === "number") {
+        num = rawValue;
+      } else if (typeof rawValue === "string") {
+        if (rawValue.trim().length === 0) {
+          return {
+            ok: false,
+            reason: `must be an integer between ${EDITOR_FONT_SIZE_MIN} and ${EDITOR_FONT_SIZE_MAX}`,
+          };
+        }
+        num = Number(rawValue);
+      } else {
+        return {
+          ok: false,
+          reason: `must be an integer between ${EDITOR_FONT_SIZE_MIN} and ${EDITOR_FONT_SIZE_MAX}`,
+        };
+      }
+      if (!Number.isFinite(num) || !Number.isInteger(num)) {
+        return {
+          ok: false,
+          reason: `must be an integer between ${EDITOR_FONT_SIZE_MIN} and ${EDITOR_FONT_SIZE_MAX}`,
+        };
+      }
+      if (num < EDITOR_FONT_SIZE_MIN || num > EDITOR_FONT_SIZE_MAX) {
+        return {
+          ok: false,
+          reason: `must be an integer between ${EDITOR_FONT_SIZE_MIN} and ${EDITOR_FONT_SIZE_MAX}`,
+        };
+      }
+      return { ok: true, value: num };
+    }
+    case "show_whitespace": {
+      if (typeof rawValue === "boolean") {
+        return { ok: true, value: rawValue };
+      }
+      if (rawValue === "true" || rawValue === "1" || rawValue === 1) {
+        return { ok: true, value: true };
+      }
+      if (rawValue === "false" || rawValue === "0" || rawValue === 0) {
+        return { ok: true, value: false };
+      }
+      return { ok: false, reason: "must be true or false" };
+    }
     default:
       return { ok: false, reason: "unknown settings field" };
   }
@@ -443,6 +496,21 @@ function ensureModalBuilt() {
     return sel;
   });
 
+  addField("settings-editor-font-size", "editor_font_size", "Editor text size (px)", () => {
+    const i = document.createElement("input");
+    i.type = "number";
+    i.min = String(EDITOR_FONT_SIZE_MIN);
+    i.max = String(EDITOR_FONT_SIZE_MAX);
+    i.step = "1";
+    return i;
+  });
+
+  addField("settings-show-whitespace", "show_whitespace", "Show whitespace", () => {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    return cb;
+  });
+
   // Footer with modal-level error span and the two buttons.
   const footer = document.createElement("div");
   footer.className = "modal-footer";
@@ -504,11 +572,15 @@ function ensureModalBuilt() {
  */
 function readFormValues() {
   if (!modalEl) return {};
+  const wsEl = modalEl.querySelector("#settings-show-whitespace");
   return {
     api_url: getInputValue("settings-api-url"),
     model: getInputValue("settings-model"),
     replace_mode: "replace_document",
     tab_spaces: getInputValue("settings-tab-spaces"),
+    editor_font_size: getInputValue("settings-editor-font-size"),
+    show_whitespace:
+      wsEl && "checked" in wsEl ? /** @type {HTMLInputElement} */ (wsEl).checked : false,
   };
 }
 
@@ -554,6 +626,11 @@ function applySettingsToForm(settings) {
     ? merged.tab_spaces
     : FALLBACK_DEFAULTS.tab_spaces;
   setInputValue("settings-tab-spaces", tabSpaces);
+  setInputValue("settings-editor-font-size", merged.editor_font_size);
+  const wsEl = modalEl?.querySelector("#settings-show-whitespace");
+  if (wsEl && "checked" in wsEl) {
+    /** @type {HTMLInputElement} */ (wsEl).checked = Boolean(merged.show_whitespace);
+  }
 }
 
 function setFieldError(field, text) {

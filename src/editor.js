@@ -61,6 +61,7 @@ import { runAgent } from "./agent.js";
 import { getHistoryForAgent, recordExchange } from "./chat_history.js";
 import { buildContextWindow } from "./context_window.js";
 import { getSelectionForContext } from "./editor_chrome.js";
+import { applyEditorDisplaySettings } from "./editor_display.js";
 import * as editorTools from "./editor_tools.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
@@ -301,7 +302,7 @@ export function currentFilePath() {
 
 /**
  * Apply editor-relevant fields from a settings snapshot (e.g. after load
- * or save). Currently configures Tab → spaces behavior.
+ * or save). Configures Tab → spaces, font size, and whitespace display.
  *
  * @param {object | null | undefined} settings
  * @returns {void}
@@ -313,6 +314,7 @@ export function applyEditorSettings(settings) {
   if (bufferEl) {
     bufferEl.style.tabSize = String(tabSpaces);
   }
+  applyEditorDisplaySettings(settings);
 }
 
 /**

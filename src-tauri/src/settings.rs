@@ -248,6 +248,12 @@ pub struct Settings {
     pub system_prompt: String,
     /// Spaces inserted when the user presses Tab in the editor (2 or 4).
     pub tab_spaces: u8,
+    /// Monospace editor font size in CSS pixels (10–32).
+    #[serde(default = "default_editor_font_size")]
+    pub editor_font_size: u8,
+    /// When true, render visible whitespace markers in document/tool editors.
+    #[serde(default)]
+    pub show_whitespace: bool,
     /// When true, include `max_tokens` in LM Studio requests.
     #[serde(default)]
     pub limit_response_length: bool,
@@ -306,6 +312,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_editor_font_size() -> u8 {
+    14
+}
+
 fn default_top_k() -> u32 {
     40
 }
@@ -335,6 +345,8 @@ impl Default for Settings {
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: String::new(),
             tab_spaces: 4,
+            editor_font_size: default_editor_font_size(),
+            show_whitespace: false,
             limit_response_length: true,
             context_overflow_policy: ContextOverflowPolicy::TruncateMiddle,
             stop_strings: String::new(),
@@ -475,6 +487,9 @@ impl Settings {
         if let Err(e) = validate_tab_spaces(self.tab_spaces) {
             errs.push(e);
         }
+        if let Err(e) = validate_editor_font_size(self.editor_font_size) {
+            errs.push(e);
+        }
         if let Err(e) = validate_top_k(self.top_k) {
             errs.push(e);
         }
@@ -551,6 +566,14 @@ impl Settings {
             "tab_spaces" => {
                 let n = expect_u32(name, value)?;
                 validate_tab_spaces_u32(n)
+            }
+            "editor_font_size" => {
+                let n = expect_u32(name, value)?;
+                validate_editor_font_size_u32(n)
+            }
+            "show_whitespace" => {
+                expect_bool(name, value)?;
+                Ok(())
             }
             "limit_response_length" => {
                 expect_bool(name, value)?;
@@ -833,6 +856,37 @@ fn validate_tab_spaces(n: u8) -> Result<(), FieldError> {
 fn validate_tab_spaces_u32(n: u32) -> Result<(), FieldError> {
     validate_tab_spaces(
         u8::try_from(n).map_err(|_| FieldError::new("tab_spaces", "must be 2 or 4"))?,
+    )
+}
+
+const EDITOR_FONT_SIZE_MIN: u8 = 10;
+const EDITOR_FONT_SIZE_MAX: u8 = 32;
+
+fn validate_editor_font_size(n: u8) -> Result<(), FieldError> {
+    if (EDITOR_FONT_SIZE_MIN..=EDITOR_FONT_SIZE_MAX).contains(&n) {
+        Ok(())
+    } else {
+        Err(FieldError::new(
+            "editor_font_size",
+            &format!(
+                "must be an integer between {} and {}",
+                EDITOR_FONT_SIZE_MIN, EDITOR_FONT_SIZE_MAX
+            ),
+        ))
+    }
+}
+
+fn validate_editor_font_size_u32(n: u32) -> Result<(), FieldError> {
+    validate_editor_font_size(
+        u8::try_from(n).map_err(|_| {
+            FieldError::new(
+                "editor_font_size",
+                &format!(
+                    "must be an integer between {} and {}",
+                    EDITOR_FONT_SIZE_MIN, EDITOR_FONT_SIZE_MAX
+                ),
+            )
+        })?,
     )
 }
 
@@ -1166,6 +1220,10 @@ mod tests {
         assert!(Settings::validate_field("system_prompt", &json!("hello")).is_ok());
         assert!(Settings::validate_field("tab_spaces", &json!(2)).is_ok());
         assert!(Settings::validate_field("tab_spaces", &json!(4)).is_ok());
+        assert!(Settings::validate_field("editor_font_size", &json!(14)).is_ok());
+        assert!(Settings::validate_field("editor_font_size", &json!(32)).is_ok());
+        assert!(Settings::validate_field("show_whitespace", &json!(true)).is_ok());
+        assert!(Settings::validate_field("show_whitespace", &json!(false)).is_ok());
     }
 
     #[test]
@@ -1205,6 +1263,13 @@ mod tests {
         assert!(Settings::validate_field("tab_spaces", &json!(0)).is_err());
         assert!(Settings::validate_field("tab_spaces", &json!(3)).is_err());
         assert!(Settings::validate_field("tab_spaces", &json!(8)).is_err());
+
+        // editor_font_size
+        assert!(Settings::validate_field("editor_font_size", &json!(9)).is_err());
+        assert!(Settings::validate_field("editor_font_size", &json!(33)).is_err());
+
+        // show_whitespace
+        assert!(Settings::validate_field("show_whitespace", &json!("yes")).is_err());
     }
 
     #[test]

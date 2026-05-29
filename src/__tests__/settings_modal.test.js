@@ -59,6 +59,8 @@ const VALID_SETTINGS = Object.freeze({
   replace_mode: "replace_document",
   system_prompt: "",
   tab_spaces: 4,
+  editor_font_size: 14,
+  show_whitespace: false,
 });
 
 beforeEach(() => {
@@ -295,6 +297,8 @@ describe("validateAll", () => {
       model: "m",
       replace_mode: "insert_at_cursor",
       tab_spaces: "2",
+      editor_font_size: "16",
+      show_whitespace: false,
     });
     expect(r.ok).toBe(true);
     expect(r.values).toEqual({
@@ -302,6 +306,8 @@ describe("validateAll", () => {
       model: "m",
       replace_mode: "insert_at_cursor",
       tab_spaces: 2,
+      editor_font_size: 16,
+      show_whitespace: false,
     });
   });
 
@@ -311,6 +317,8 @@ describe("validateAll", () => {
       model: "",
       replace_mode: "wrong",
       tab_spaces: 3,
+      editor_font_size: 14,
+      show_whitespace: false,
     });
     expect(r.ok).toBe(false);
     const fields = Array.from(r.errors.keys()).sort();
@@ -461,6 +469,8 @@ describe("Save with all-valid fields (Req 11.3)", () => {
       replace_mode: "replace_document",
       system_prompt: "Be terse.",
       tab_spaces: 4,
+      editor_font_size: 14,
+      show_whitespace: false,
     });
     expect(isModalOpen()).toBe(false);
     expect(document.querySelector("#settings-modal").hidden).toBe(true);

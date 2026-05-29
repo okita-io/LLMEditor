@@ -91,7 +91,9 @@ import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
 import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
 import * as inferencePanel from "./inference_panel.js";
+import { ensureDefaultToolsLoaded } from "./default_tools.js";
 import { initToolEditor, getToolFileStatus } from "./tool_editor.js";
+import { initPanelResize } from "./panel_resize.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
 // dropped into the WebView console) can reach it without a separate
@@ -565,7 +567,9 @@ export async function bootstrap() {
 
   chat.initializeChat();
   await inferencePanel.initializeInferencePanel();
+  await ensureDefaultToolsLoaded();
   initToolEditor();
+  initPanelResize();
   document.addEventListener("tool-file-changed", () => {
     renderStatus();
   });

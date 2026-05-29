@@ -4,7 +4,11 @@
 // tool_editor.js — live JS implementation + JSON schema editor panes.
 
 import * as api from "./api.js";
+import { DEFAULT_TOOL_NAMES, getDefaultToolSchemas } from "./default_tools.js";
+import { refreshEditorChrome } from "./editor_chrome.js";
+import { notifyRefresh as notifyEditorDisplayRefresh } from "./editor_display.js";
 import { showConfirmModal } from "./inference_panel.js";
+import { attachCodeHighlight } from "./tool_code_highlight.js";
 
 /** @type {HTMLTextAreaElement | null} */
 let schemaEditorEl = null;
@@ -60,6 +64,27 @@ function revalidateSchema() {
   try {
     const parsed = JSON.parse(raw);
     parsedTools = Array.isArray(parsed) ? parsed : [parsed];
+    const reserved = [];
+    for (const tool of parsedTools) {
+      const fn = tool.function;
+      const name =
+        fn && typeof fn === "object" && typeof fn.name === "string"
+          ? fn.name
+          : typeof tool.name === "string"
+            ? tool.name
+            : "";
+      if (name && DEFAULT_TOOL_NAMES.has(name)) reserved.push(name);
+    }
+    if (reserved.length > 0) {
+      parsedTools = [];
+      schemaValid = false;
+      updateSchemaStatus(
+        `✗ reserved name(s): ${reserved.join(", ")} (use default.lmtools)`,
+        "error"
+      );
+      notifyToolFileChanged();
+      return;
+    }
     schemaValid = true;
     const n = parsedTools.length;
     updateSchemaStatus(`✓ ${n} tool${n !== 1 ? "s" : ""}`, "valid");
@@ -353,21 +378,37 @@ async function onToolDelete() {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function getCustomTools() {
+/** Tools from the user's .lmtool file only. */
+export function getUserTools() {
   return parsedTools;
+}
+
+/** Default built-in tools + user tools (sent to LM Studio). */
+export function getAgentTools() {
+  return [...getDefaultToolSchemas(), ...parsedTools];
+}
+
+/** @deprecated Use getAgentTools — kept for call-site compatibility. */
+export function getCustomTools() {
+  return getAgentTools();
 }
 
 export function hasCustomTools() {
   return schemaValid && parsedTools.length > 0;
 }
 
-export function isCustomTool(name) {
+export function isUserCustomTool(name) {
   for (const tool of parsedTools) {
     const fn = tool.function;
     if (fn && typeof fn === "object" && fn.name === name) return true;
     if (tool.name === name) return true;
   }
   return false;
+}
+
+/** @deprecated Use isUserCustomTool or isDefaultTool. */
+export function isCustomTool(name) {
+  return isUserCustomTool(name);
 }
 
 export async function executeCustomTool(name, args, ctx) {
@@ -386,7 +427,7 @@ export async function executeCustomTool(name, args, ctx) {
       Object.getPrototypeOf(async function () {}).constructor
     );
     const fn = new AsyncFunction("args", "ctx", `${code}\nreturn await run(args, ctx);`);
-    const result = await fn(args, ctx);
+    const result = await fn(args, { ...ctx, toolName: name });
     if (result == null || typeof result !== "object") {
       return { ok: true, result: result ?? "(no return value)", changed: false };
     }
@@ -398,6 +439,12 @@ export async function executeCustomTool(name, args, ctx) {
 }
 
 // ─── Resize handles ───────────────────────────────────────────────────────────
+
+function notifyPaneLayoutChanged() {
+  refreshEditorChrome();
+  notifyEditorDisplayRefresh();
+  window.dispatchEvent(new Event("resize"));
+}
 
 function initHorizontalResize() {
   if (!toolPaneDividerEl || !docBufferPaneEl) return;
@@ -425,16 +472,21 @@ function initHorizontalResize() {
     const dividerH = toolPaneDividerEl ? toolPaneDividerEl.offsetHeight : 4;
     const minDoc = 80;
     const minTool = 120;
-    const newDocH = Math.max(minDoc, Math.min(containerH - minTool - dividerH, startDocH + delta));
+    let newDocH = startDocH + delta;
+    newDocH = Math.max(minDoc, newDocH);
+    newDocH = Math.min(newDocH, containerH - minTool - dividerH);
     const newToolH = Math.max(minTool, containerH - newDocH - dividerH);
 
     docBufferPaneEl.style.flex = "none";
     docBufferPaneEl.style.height = `${newDocH}px`;
+    docBufferPaneEl.style.minHeight = "0";
 
     if (toolEditorPaneEl) {
       toolEditorPaneEl.style.flex = "none";
       toolEditorPaneEl.style.height = `${newToolH}px`;
+      toolEditorPaneEl.style.minHeight = `${minTool}px`;
     }
+    notifyPaneLayoutChanged();
   });
 
   document.addEventListener("mouseup", () => {
@@ -442,6 +494,7 @@ function initHorizontalResize() {
     dragging = false;
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
+    notifyPaneLayoutChanged();
   });
 }
 
@@ -473,12 +526,15 @@ function initVerticalResize() {
     const delta = e.clientX - startX;
     const container = implPaneEl.parentElement;
     const containerW = container ? container.offsetWidth : startW * 2;
-    const maxW = containerW - 150;
-    const newW = Math.max(150, Math.min(maxW, startW + delta));
+    const minPane = 150;
+    let newW = Math.max(minPane, startW + delta);
+    newW = Math.min(newW, containerW - minPane);
     implPaneEl.style.flex = `0 0 ${newW}px`;
     if (schemaPaneEl) {
       schemaPaneEl.style.flex = "1 1 auto";
+      schemaPaneEl.style.minWidth = `${minPane}px`;
     }
+    notifyPaneLayoutChanged();
   });
 
   document.addEventListener("mouseup", () => {
@@ -488,6 +544,7 @@ function initVerticalResize() {
     schemaPaneEl = null;
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
+    notifyPaneLayoutChanged();
   });
 }
 
@@ -553,8 +610,17 @@ export function initToolEditor() {
   wireToolFileBar();
   syncToolFileControls();
 
+  attachCodeHighlight(implEditorEl, "javascript");
+  attachCodeHighlight(schemaEditorEl, "json");
+
   initHorizontalResize();
   initVerticalResize();
+
+  if (typeof ResizeObserver !== "undefined" && toolEditorPaneEl) {
+    const ro = new ResizeObserver(() => notifyPaneLayoutChanged());
+    ro.observe(toolEditorPaneEl);
+    if (docBufferPaneEl) ro.observe(docBufferPaneEl);
+  }
 }
 
 export const _internal = {

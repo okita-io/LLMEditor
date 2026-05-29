@@ -5,6 +5,10 @@
 // while the user is typing in the chat panel.
 
 import { selectionLineRange } from "./context_window.js";
+import {
+  attachBufferWhitespaceOverlay,
+  onEditorDisplayRefresh,
+} from "./editor_display.js";
 
 const RULER_LABELS =
   "    5    10    15    20    25    30    35    40    45    50    55    60    65    70";
@@ -381,6 +385,24 @@ function renderGhostOverlay() {
 }
 
 /**
+ * Invalidate cached character width (e.g. after font size change).
+ *
+ * @returns {void}
+ */
+export function invalidateCharWidthCache() {
+  charWidthCache = null;
+}
+
+/**
+ * Re-measure gutter line heights and refresh cursor reporting.
+ *
+ * @returns {void}
+ */
+export function refreshEditorChrome() {
+  refreshChrome();
+}
+
+/**
  * @returns {void}
  */
 function refreshChrome() {
@@ -494,6 +516,28 @@ export function attachEditorChrome(buffer, opts = {}) {
   }
   window.addEventListener("resize", refreshChrome);
 
+  const whitespaceOverlay = document.getElementById("buffer-whitespace-overlay");
+  let detachWhitespace = () => {};
+  if (whitespaceOverlay) {
+    detachWhitespace = attachBufferWhitespaceOverlay(bufferEl, whitespaceOverlay);
+  }
+
+  const offDisplayRefresh = onEditorDisplayRefresh(() => {
+    charWidthCache = null;
+    refreshChrome();
+  });
+
+  const docBufferPane = document.getElementById("doc-buffer-pane");
+  const editorBufferWrap = bufferEl.closest(".editor-buffer-wrap");
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => refreshChrome())
+      : null;
+  if (resizeObserver) {
+    if (docBufferPane) resizeObserver.observe(docBufferPane);
+    if (editorBufferWrap) resizeObserver.observe(editorBufferWrap);
+  }
+
   captureSelection();
   refreshChrome();
 
@@ -510,6 +554,9 @@ export function attachEditorChrome(buffer, opts = {}) {
       chatPanel.removeEventListener("focusout", onChatFocusOut);
     }
     window.removeEventListener("resize", refreshChrome);
+    detachWhitespace();
+    offDisplayRefresh();
+    if (resizeObserver) resizeObserver.disconnect();
     setGhostSelectionActive(false);
     bufferEl = null;
     gutterEl = null;

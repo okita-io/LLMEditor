@@ -1680,20 +1680,30 @@ mod tests {
     }
 
     #[test]
-    fn build_agent_body_merges_custom_tools() {
+    fn build_agent_body_passes_tools_from_frontend() {
         let s = settings_with_prompt("");
         let messages = vec![json!({"role": "user", "content": "run greet"})];
-        let custom = vec![json!({
-            "type": "function",
-            "function": {
-                "name": "greet",
-                "description": "Say hello",
-                "parameters": { "type": "object", "properties": {} }
-            }
-        })];
-        let body = build_agent_body(&messages, &s, &custom);
+        let tools_input = vec![
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "replace_line",
+                    "description": "Replace a line",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "greet",
+                    "description": "Say hello",
+                    "parameters": { "type": "object", "properties": {} }
+                }
+            }),
+        ];
+        let body = build_agent_body(&messages, &s, &tools_input);
         let tools = body["tools"].as_array().expect("tools array");
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 2);
         assert_eq!(tools.last().unwrap()["function"]["name"], "greet");
     }
 

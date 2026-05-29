@@ -18,8 +18,12 @@ import {
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 import {
-  getCustomTools,
-  isCustomTool,
+  executeDefaultTool,
+  isDefaultTool,
+} from "./default_tools.js";
+import {
+  getAgentTools,
+  isUserCustomTool,
   executeCustomTool,
 } from "./tool_editor.js";
 
@@ -32,7 +36,7 @@ const THINKING_NUDGE =
   "You responded with text but did not call any tools. Please use the provided tools (replace_line, replace_span, insert_text, delete_lines, delete_span, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
 
 const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
-Use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
+Built-in document tools are provided via default.lmtools; use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
 Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
@@ -230,7 +234,7 @@ export async function runAgent(options) {
   ];
 
   const systemPrompt = buildSystemPrompt(settings);
-  const initialRequestBody = buildAgentRequestPreview(settings, messages, getCustomTools());
+  const initialRequestBody = buildAgentRequestPreview(settings, messages, getAgentTools());
 
   callbacks.onAgentContext?.({
     userContent,
@@ -248,7 +252,7 @@ export async function runAgent(options) {
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const turnNumber = turn + 1;
-    const customTools = getCustomTools();
+    const customTools = getAgentTools();
     const requestBody = buildAgentRequestPreview(settings, messages, customTools);
 
     callbacks.onAgentTurnRequest?.({
@@ -311,16 +315,31 @@ export async function runAgent(options) {
         }
 
         // eslint-disable-next-line no-await-in-loop
-        const result = parseError
-          ? { ok: false, error: parseError, changed: false }
-          : isCustomTool(toolCall.name)
-            ? await executeCustomTool(toolCall.name, parsedArgs, ctx)
-            : editorTools.executeTool(toolCall.name, parsedArgs, ctx);
+        const execCtx = {
+          ...ctx,
+          toolName: toolCall.name,
+          editorTools,
+        };
+
+        let result;
+        if (parseError) {
+          result = { ok: false, error: parseError, changed: false };
+        } else if (isDefaultTool(toolCall.name)) {
+          result = await executeDefaultTool(toolCall.name, parsedArgs, execCtx);
+        } else if (isUserCustomTool(toolCall.name)) {
+          result = await executeCustomTool(toolCall.name, parsedArgs, execCtx);
+        } else {
+          result = {
+            ok: false,
+            error: `Unknown tool: ${toolCall.name}`,
+            changed: false,
+          };
+        }
 
         if (
           result.ok === true &&
           result.changed !== false &&
-          (MUTATING_TOOLS.has(toolCall.name) || isCustomTool(toolCall.name))
+          (MUTATING_TOOLS.has(toolCall.name) || isUserCustomTool(toolCall.name))
         ) {
           mutatingToolCount += 1;
         }
