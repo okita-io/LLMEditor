@@ -75,23 +75,33 @@ describe("tool_editor", () => {
     expect(JSON.parse(parsed.schema).function.name).toBe("greet");
   });
 
-  it("rejects schema tools that shadow default tool names", () => {
+  it("rejects schema tools with duplicate names", () => {
     document.getElementById("tool-schema-editor").value = JSON.stringify(
-      {
-        type: "function",
-        function: {
-          name: "replace_line",
-          description: "duplicate",
-          parameters: { type: "object", properties: {} },
+      [
+        {
+          type: "function",
+          function: {
+            name: "greet",
+            description: "Say hello",
+            parameters: { type: "object", properties: {} },
+          },
         },
-      },
+        {
+          type: "function",
+          function: {
+            name: "greet",
+            description: "Duplicate",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
       null,
       2
     );
     _internal.revalidateSchema();
     const status = document.getElementById("tool-schema-status");
     expect(status?.getAttribute("data-state")).toBe("error");
-    expect(status?.textContent).toContain("reserved");
+    expect(status?.textContent).toContain("duplicate");
   });
 
   it("loads a tool file into both panes", async () => {

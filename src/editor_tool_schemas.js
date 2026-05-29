@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 okita.io
 //
-// Editor tool schemas — loaded from default.lmtools at runtime.
+// Editor tool schemas — from the loaded tool file in the tool editor.
 
-import { getDefaultToolSchemas } from "./default_tools.js";
+import { getAgentTools } from "./tool_editor.js";
 
 /** @returns {Array<{ type: string, function: object }>} */
 export function editorToolDefinitions() {
-  return getDefaultToolSchemas();
+  return getAgentTools();
 }

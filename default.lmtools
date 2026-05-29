@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "implementation": "/**\n * Built-in document tools for LLIMEdit.\n * Loaded from default.lmtools — do not redefine these names in your own .lmtool file.\n */\nasync function run(args, ctx) {\n  const name = ctx.toolName;\n  if (!name || typeof ctx.editorTools?.executeTool !== \"function\") {\n    return { ok: false, error: \"Missing toolName or editorTools\", changed: false };\n  }\n  return ctx.editorTools.executeTool(name, args, ctx);\n}\n",
+  "implementation": "/**\n * Default document tools for LLIMEdit.\n * Load this file in the tool editor (Load → default.lmtools) to give the agent\n * read/write access to the document buffer.\n */\nasync function run(args, ctx) {\n  const name = ctx.toolName;\n  if (!name || typeof ctx.editorTools?.executeTool !== \"function\") {\n    return { ok: false, error: \"Missing toolName or editorTools\", changed: false };\n  }\n  return ctx.editorTools.executeTool(name, args, ctx);\n}\n",
   "schema": [
     {
       "type": "function",

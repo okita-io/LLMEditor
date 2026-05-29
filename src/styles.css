@@ -241,6 +241,11 @@ body {
   color: var(--text-muted);
 }
 
+.inference-prompt-file-section {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
 .inference-presets-section {
   display: flex;
   flex-direction: column;

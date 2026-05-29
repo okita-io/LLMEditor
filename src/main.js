@@ -91,7 +91,6 @@ import { buildMenuBar, setAiMenuEnabled } from "./menu.js";
 import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
 import * as inferencePanel from "./inference_panel.js";
-import { ensureDefaultToolsLoaded } from "./default_tools.js";
 import { initToolEditor, getToolFileStatus } from "./tool_editor.js";
 import { initPanelResize } from "./panel_resize.js";
 
@@ -567,7 +566,6 @@ export async function bootstrap() {
 
   chat.initializeChat();
   await inferencePanel.initializeInferencePanel();
-  await ensureDefaultToolsLoaded();
   initToolEditor();
   initPanelResize();
   document.addEventListener("tool-file-changed", () => {

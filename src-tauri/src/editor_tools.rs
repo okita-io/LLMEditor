@@ -5,7 +5,7 @@
 
 use serde_json::{json, Value};
 
-/// Validate and normalize tool definitions from the frontend (default.lmtools + user .lmtool).
+/// Validate and normalize tool definitions from the frontend (loaded .lmtool / .lmtools files).
 pub fn parse_custom_tool_definitions(tools: &[Value]) -> Result<Vec<Value>, String> {
     let mut out = Vec::with_capacity(tools.len());
     for (index, tool) in tools.iter().enumerate() {

@@ -15,12 +15,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runAgent, _internal } from "../agent.js";
 import * as api from "../api.js";
+import { loadDefaultToolsFixture } from "./setup/default_lmtools_fixture.js";
 
 vi.mock("../api.js", () => ({
   agentTurn: vi.fn(),
 }));
 
 beforeEach(() => {
+  loadDefaultToolsFixture();
   vi.mocked(api.agentTurn).mockReset();
 });
 

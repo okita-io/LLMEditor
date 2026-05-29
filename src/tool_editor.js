@@ -4,7 +4,6 @@
 // tool_editor.js — live JS implementation + JSON schema editor panes.
 
 import * as api from "./api.js";
-import { DEFAULT_TOOL_NAMES, getDefaultToolSchemas } from "./default_tools.js";
 import { refreshEditorChrome } from "./editor_chrome.js";
 import { notifyRefresh as notifyEditorDisplayRefresh } from "./editor_display.js";
 import { showConfirmModal } from "./inference_panel.js";
@@ -39,6 +38,9 @@ let parsedTools = [];
 /** @type {boolean} */
 let schemaValid = true;
 
+/** @type {string | null} */
+let testImplementationOverride = null;
+
 /** @type {(() => Promise<string|null>) | null} */
 let openDialogOverride = null;
 /** @type {((ext: string) => Promise<string|null>) | null} */
@@ -49,22 +51,26 @@ const TOOL_FILE_VERSION = 1;
 
 // ─── Schema validation ────────────────────────────────────────────────────────
 
-function revalidateSchema() {
-  if (!schemaEditorEl) return;
-  const raw = schemaEditorEl.value.trim();
+/**
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function applySchemaFromRaw(raw) {
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
 
-  if (!raw) {
+  if (!trimmed) {
     parsedTools = [];
     schemaValid = true;
     updateSchemaStatus("", "idle");
     notifyToolFileChanged();
-    return;
+    return true;
   }
 
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(trimmed);
     parsedTools = Array.isArray(parsed) ? parsed : [parsed];
-    const reserved = [];
+    const seen = new Set();
+    const duplicates = [];
     for (const tool of parsedTools) {
       const fn = tool.function;
       const name =
@@ -73,17 +79,19 @@ function revalidateSchema() {
           : typeof tool.name === "string"
             ? tool.name
             : "";
-      if (name && DEFAULT_TOOL_NAMES.has(name)) reserved.push(name);
+      if (!name) continue;
+      if (seen.has(name)) duplicates.push(name);
+      else seen.add(name);
     }
-    if (reserved.length > 0) {
+    if (duplicates.length > 0) {
       parsedTools = [];
       schemaValid = false;
       updateSchemaStatus(
-        `✗ reserved name(s): ${reserved.join(", ")} (use default.lmtools)`,
+        `✗ duplicate name(s): ${[...new Set(duplicates)].join(", ")}`,
         "error"
       );
       notifyToolFileChanged();
-      return;
+      return false;
     }
     schemaValid = true;
     const n = parsedTools.length;
@@ -93,8 +101,16 @@ function revalidateSchema() {
     schemaValid = false;
     const msg = err instanceof Error ? err.message : String(err);
     updateSchemaStatus(`✗ ${msg.split("\n")[0]}`, "error");
+    notifyToolFileChanged();
+    return false;
   }
   notifyToolFileChanged();
+  return true;
+}
+
+function revalidateSchema() {
+  if (!schemaEditorEl) return;
+  applySchemaFromRaw(schemaEditorEl.value);
 }
 
 /**
@@ -267,7 +283,7 @@ async function invokeOpenDialog() {
   const result = await tauri.dialog.open({
     multiple: false,
     filters: [
-      { name: "LLIMEdit tools", extensions: ["lmtool"] },
+      { name: "LLIMEdit tools", extensions: ["lmtool", "lmtools"] },
       { name: "All files", extensions: ["*"] },
     ],
   });
@@ -286,7 +302,7 @@ async function invokeSaveDialog() {
   }
   const result = await tauri.dialog.save({
     filters: [
-      { name: "LLIMEdit tools", extensions: ["lmtool"] },
+      { name: "LLIMEdit tools", extensions: ["lmtool", "lmtools"] },
       { name: "All files", extensions: ["*"] },
     ],
     defaultPath:
@@ -383,9 +399,9 @@ export function getUserTools() {
   return parsedTools;
 }
 
-/** Default built-in tools + user tools (sent to LM Studio). */
+/** Tools from the loaded tool file (sent to LM Studio). */
 export function getAgentTools() {
-  return [...getDefaultToolSchemas(), ...parsedTools];
+  return parsedTools;
 }
 
 /** @deprecated Use getAgentTools — kept for call-site compatibility. */
@@ -406,13 +422,15 @@ export function isUserCustomTool(name) {
   return false;
 }
 
-/** @deprecated Use isUserCustomTool or isDefaultTool. */
+/** @deprecated Use isUserCustomTool — kept for call-site compatibility. */
 export function isCustomTool(name) {
   return isUserCustomTool(name);
 }
 
 export async function executeCustomTool(name, args, ctx) {
-  const code = implEditorEl ? implEditorEl.value.trim() : "";
+  const code = (
+    implEditorEl ? implEditorEl.value : testImplementationOverride ?? ""
+  ).trim();
 
   if (!code) {
     return {
@@ -649,11 +667,29 @@ export const _internal = {
     toolDirty = false;
     parsedTools = [];
     schemaValid = true;
+    testImplementationOverride = null;
     openDialogOverride = null;
     saveDialogOverride = null;
     if (schemaEditorEl) schemaEditorEl.value = "";
     if (implEditorEl) implEditorEl.value = "";
     revalidateSchema();
     syncToolFileControls();
+  },
+  /**
+   * Load tool implementation + schema without file I/O (tests only).
+   * @param {{ implementation: string, schema: string | Array<Record<string, unknown>> | Record<string, unknown> }} bundle
+   */
+  setLoadedToolsForTests(bundle) {
+    testImplementationOverride =
+      typeof bundle?.implementation === "string" ? bundle.implementation : "";
+    const schemaRaw =
+      typeof bundle?.schema === "string"
+        ? bundle.schema
+        : bundle?.schema != null
+          ? JSON.stringify(bundle.schema, null, 2)
+          : "";
+    if (schemaEditorEl) schemaEditorEl.value = schemaRaw;
+    if (implEditorEl) implEditorEl.value = testImplementationOverride;
+    applySchemaFromRaw(schemaRaw);
   },
 };

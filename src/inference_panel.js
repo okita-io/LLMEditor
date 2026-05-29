@@ -15,9 +15,22 @@ let saveTimer = null;
 let suppressSave = false;
 
 const PRESET_NAME_MAX_CHARS = 128;
+const PROMPT_FILE_EXT = ".prompt";
 
 /** @type {string} */
 let loadedPresetName = "";
+
+/** @type {string | null} */
+let currentPromptPath = null;
+
+/** @type {boolean} */
+let promptFileDirty = false;
+
+/** @type {(() => Promise<string|null>) | null} */
+let openPromptDialogOverride = null;
+
+/** @type {(() => Promise<string|null>) | null} */
+let savePromptDialogOverride = null;
 
 /** @type {HTMLElement | null} */
 let confirmModalEl = null;
@@ -616,6 +629,268 @@ async function onPresetDelete() {
   refreshPresetDropdown(presets, active);
 }
 
+function basename(path) {
+  if (typeof path !== "string" || path.length === 0) return "";
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] || path;
+}
+
+function ensurePromptExtension(path) {
+  if (typeof path !== "string" || path.length === 0) return path;
+  const lower = path.toLowerCase();
+  return lower.endsWith(PROMPT_FILE_EXT) ? path : `${path}${PROMPT_FILE_EXT}`;
+}
+
+function markPromptFileDirty() {
+  promptFileDirty = true;
+  syncPromptFileControls();
+}
+
+function clearPromptFileDirty() {
+  promptFileDirty = false;
+  syncPromptFileControls();
+}
+
+function syncPromptFileControls() {
+  const nameEl = $("inference-prompt-file-name");
+  if (nameEl) {
+    const display =
+      typeof currentPromptPath === "string" && currentPromptPath.length > 0
+        ? basename(currentPromptPath)
+        : nameEl.value.trim() || "";
+    if (document.activeElement !== nameEl) {
+      nameEl.value = display;
+    }
+  }
+  const deleteBtn = $("inference-prompt-delete");
+  if (deleteBtn) {
+    deleteBtn.disabled = !(typeof currentPromptPath === "string" && currentPromptPath.length > 0);
+  }
+}
+
+async function pathExists(path) {
+  try {
+    await api.openFile(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function invokePromptOpenDialog() {
+  if (typeof openPromptDialogOverride === "function") {
+    return await openPromptDialogOverride();
+  }
+  const tauri = globalThis.__TAURI__;
+  if (!tauri || !tauri.dialog || typeof tauri.dialog.open !== "function") {
+    return null;
+  }
+  const result = await tauri.dialog.open({
+    multiple: false,
+    filters: [
+      { name: "LLIMEdit prompts", extensions: ["prompt"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  if (result === null || result === undefined) return null;
+  if (Array.isArray(result)) return result.length > 0 ? result[0] : null;
+  return typeof result === "string" ? result : null;
+}
+
+async function invokePromptSaveDialog() {
+  if (typeof savePromptDialogOverride === "function") {
+    return await savePromptDialogOverride();
+  }
+  const tauri = globalThis.__TAURI__;
+  if (!tauri || !tauri.dialog || typeof tauri.dialog.save !== "function") {
+    return null;
+  }
+  const result = await tauri.dialog.save({
+    filters: [
+      { name: "LLIMEdit prompts", extensions: ["prompt"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+    defaultPath:
+      typeof currentPromptPath === "string" && currentPromptPath.length > 0
+        ? currentPromptPath
+        : undefined,
+  });
+  if (result === null || result === undefined) return null;
+  return typeof result === "string" ? result : null;
+}
+
+/**
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+async function loadPromptFile(path) {
+  const contents = await api.openFile(path);
+  suppressSave = true;
+  setValue("inference-system-prompt", contents);
+  suppressSave = false;
+  currentPromptPath = path;
+  clearPromptFileDirty();
+  syncPromptFileControls();
+  await persistInferenceSettings();
+  return true;
+}
+
+/**
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+async function savePromptFileToPath(path) {
+  const normalized = ensurePromptExtension(path);
+  const contents = inputValue("inference-system-prompt");
+  await api.saveFile(normalized, contents);
+  currentPromptPath = normalized;
+  clearPromptFileDirty();
+  syncPromptFileControls();
+  return true;
+}
+
+async function onPromptOpen() {
+  const picked = await invokePromptOpenDialog();
+  if (!picked) return;
+  await loadPromptFile(picked);
+}
+
+async function onPromptSave() {
+  if (typeof currentPromptPath === "string" && currentPromptPath.length > 0) {
+    await savePromptFileToPath(currentPromptPath);
+    return;
+  }
+  await onPromptSaveAs();
+}
+
+async function onPromptSaveAs() {
+  let picked = await invokePromptSaveDialog();
+  if (!picked) return;
+  picked = ensurePromptExtension(picked);
+
+  if (await pathExists(picked)) {
+    const confirmed = await showConfirmModal(
+      "Warning",
+      `There is already a prompt file named "${basename(picked)}" do you want to overwrite it?`,
+      "Save"
+    );
+    if (!confirmed) return;
+  }
+
+  await savePromptFileToPath(picked);
+}
+
+async function onPromptDelete() {
+  if (!(typeof currentPromptPath === "string" && currentPromptPath.length > 0)) return;
+
+  const name = basename(currentPromptPath);
+  const confirmed = await showConfirmModal(
+    "Warning",
+    `Are you sure you want to delete the prompt file named "${name}"?`,
+    "Delete"
+  );
+  if (!confirmed) return;
+
+  await api.deleteFile(currentPromptPath);
+  currentPromptPath = null;
+  suppressSave = true;
+  setValue("inference-system-prompt", "");
+  suppressSave = false;
+  clearPromptFileDirty();
+  syncPromptFileControls();
+  await persistInferenceSettings();
+}
+
+/**
+ * @returns {HTMLElement}
+ */
+function buildPromptFileSection() {
+  const section = document.createElement("section");
+  section.className = "inference-prompt-file-section";
+  section.setAttribute("aria-label", "System prompt file");
+
+  const bar = document.createElement("div");
+  bar.className = "tool-file-bar";
+
+  const nameRow = document.createElement("label");
+  nameRow.className = "tool-file-name-row";
+  nameRow.htmlFor = "inference-prompt-file-name";
+
+  const nameLabel = document.createElement("span");
+  nameLabel.className = "tool-file-label";
+  nameLabel.textContent = "Prompt file:";
+  nameRow.appendChild(nameLabel);
+
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.id = "inference-prompt-file-name";
+  nameInput.className = "tool-file-name";
+  nameInput.spellcheck = false;
+  nameInput.autocomplete = "off";
+  nameInput.placeholder = "Untitled.prompt";
+  nameInput.addEventListener("input", () => {
+    const typed = nameInput.value.trim();
+    if (typed.length === 0) {
+      currentPromptPath = null;
+    } else if (typeof currentPromptPath === "string" && currentPromptPath.length > 0) {
+      const sep = currentPromptPath.includes("\\") ? "\\" : "/";
+      const prefix = currentPromptPath.slice(0, currentPromptPath.lastIndexOf(sep) + 1);
+      currentPromptPath = prefix ? `${prefix}${typed}` : typed;
+    }
+    syncPromptFileControls();
+  });
+  nameRow.appendChild(nameInput);
+  bar.appendChild(nameRow);
+
+  const controls = document.createElement("div");
+  controls.className = "tool-file-controls";
+
+  const openBtn = document.createElement("button");
+  openBtn.type = "button";
+  openBtn.id = "inference-prompt-open";
+  openBtn.className = "tool-file-btn tool-file-btn-primary";
+  openBtn.textContent = "Open";
+  openBtn.addEventListener("click", () => {
+    void onPromptOpen();
+  });
+  controls.appendChild(openBtn);
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.id = "inference-prompt-save";
+  saveBtn.className = "tool-file-btn tool-file-btn-primary";
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", () => {
+    void onPromptSave();
+  });
+  controls.appendChild(saveBtn);
+
+  const saveAsBtn = document.createElement("button");
+  saveAsBtn.type = "button";
+  saveAsBtn.id = "inference-prompt-save-as";
+  saveAsBtn.className = "tool-file-btn tool-file-btn-primary";
+  saveAsBtn.textContent = "Save as…";
+  saveAsBtn.addEventListener("click", () => {
+    void onPromptSaveAs();
+  });
+  controls.appendChild(saveAsBtn);
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.id = "inference-prompt-delete";
+  deleteBtn.className = "tool-file-btn tool-file-btn-danger";
+  deleteBtn.textContent = "Delete";
+  deleteBtn.disabled = true;
+  deleteBtn.addEventListener("click", () => {
+    void onPromptDelete();
+  });
+  controls.appendChild(deleteBtn);
+
+  bar.appendChild(controls);
+  section.appendChild(bar);
+  return section;
+}
+
 /**
  * @returns {void}
  */
@@ -800,6 +1075,7 @@ function buildPanelDom() {
   scroll.appendChild(heading);
 
   scroll.appendChild(buildPresetsSection());
+  scroll.appendChild(buildPromptFileSection());
 
   const systemPrompt = document.createElement("textarea");
   systemPrompt.id = "inference-system-prompt";
@@ -807,7 +1083,10 @@ function buildPanelDom() {
   systemPrompt.rows = 8;
   systemPrompt.placeholder = "Optional system instructions…";
   systemPrompt.spellcheck = false;
-  systemPrompt.addEventListener("input", scheduleSave);
+  systemPrompt.addEventListener("input", () => {
+    markPromptFileDirty();
+    scheduleSave();
+  });
   scroll.appendChild(systemPrompt);
 
   scroll.appendChild(
@@ -1063,8 +1342,29 @@ export const _internal = {
   setActiveReasoningCapability,
   getActiveReasoningCapability: () => activeReasoningCapability,
   getLoadedPresetName: () => loadedPresetName,
+  onPromptOpen,
+  onPromptSave,
+  onPromptSaveAs,
+  onPromptDelete,
+  loadPromptFile,
+  savePromptFileToPath,
+  getCurrentPromptPath: () => currentPromptPath,
+  isPromptFileDirty: () => promptFileDirty,
+  setPromptDialogOverrides(overrides = {}) {
+    if (!overrides || typeof overrides !== "object") {
+      openPromptDialogOverride = null;
+      savePromptDialogOverride = null;
+      return;
+    }
+    openPromptDialogOverride = overrides.open || null;
+    savePromptDialogOverride = overrides.save || null;
+  },
   resetForTests() {
     loadedPresetName = "";
+    currentPromptPath = null;
+    promptFileDirty = false;
+    openPromptDialogOverride = null;
+    savePromptDialogOverride = null;
     activeReasoningCapability = null;
     if (confirmModalEl && confirmModalEl.parentNode) {
       confirmModalEl.parentNode.removeChild(confirmModalEl);

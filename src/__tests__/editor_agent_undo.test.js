@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api.js";
 import * as editor from "../editor.js";
+import { loadDefaultToolsFixture } from "./setup/default_lmtools_fixture.js";
 
 vi.mock("../api.js", async (importOriginal) => {
   const actual = await importOriginal();
@@ -19,6 +20,7 @@ function installBuffer(initialValue = "") {
 }
 
 beforeEach(() => {
+  loadDefaultToolsFixture();
   document.body.innerHTML = "";
   globalThis.__TAURI__ = {
     core: {

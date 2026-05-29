@@ -18,10 +18,6 @@ import {
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 import {
-  executeDefaultTool,
-  isDefaultTool,
-} from "./default_tools.js";
-import {
   getAgentTools,
   isUserCustomTool,
   executeCustomTool,
@@ -36,7 +32,7 @@ const THINKING_NUDGE =
   "You responded with text but did not call any tools. Please use the provided tools (replace_line, replace_span, insert_text, delete_lines, delete_span, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
 
 const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
-Built-in document tools are provided via default.lmtools; use the provided tools to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
+Use the tools loaded in the tool editor to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
 Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
 The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
 Call get_document when you need to re-read the current buffer (returns the same context window for large files).
@@ -324,8 +320,6 @@ export async function runAgent(options) {
         let result;
         if (parseError) {
           result = { ok: false, error: parseError, changed: false };
-        } else if (isDefaultTool(toolCall.name)) {
-          result = await executeDefaultTool(toolCall.name, parsedArgs, execCtx);
         } else if (isUserCustomTool(toolCall.name)) {
           result = await executeCustomTool(toolCall.name, parsedArgs, execCtx);
         } else {

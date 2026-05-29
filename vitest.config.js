@@ -13,6 +13,6 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/__tests__/**/*.test.js"],
     exclude: ["src/__tests__/smoke/**"],
-    setupFiles: ["src/__tests__/setup/default_tools_setup.js"],
+    setupFiles: [],
   },
 });

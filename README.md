@@ -12,8 +12,11 @@ LLIMEdit is a **tool-use sandbox**, not a full IDE:
 
 - **Document buffer** — open/save plain text, line numbers, selection-aware context for large files
 - **Agent loop** — multi-turn chat with native `tool_calls` against LM Studio (OpenAI-compatible API)
-- **Tool editor** — write your own tools in JavaScript with JSON schemas (`.lmtool` files)
-- **Built-in document tools** — shipped in [`src/default.lmtools`](src/default.lmtools) so your custom tools never collide with `get_document`, `replace_line`, etc.
+- **Tool editor** — write your own tools in JavaScript with JSON schemas (`.lmtool` / `.lmtools` files)
+- **Starter document tools** — [`default.lmtools`](default.lmtools) in this repo is a ready-made set of seven text-editing tools; load it when you want the agent to read and write the buffer
+- **Starter system prompt** — [`default.prompt`](default.prompt) is a plain-text persona you can open in the inference panel when you want a sensible default assistant
+
+The app ships with **no tools loaded** and **no prompt file open**. Until you load a tool file, the LLM sees an empty tool list and the agent cannot call anything. That keeps your sandbox isolated until you choose what to expose.
 
 The main text buffer stays unstyled; **syntax highlighting** is enabled in the tool **Implementation (JS)** and **Schema (JSON)** panes only.
 
@@ -52,6 +55,22 @@ npm run dev
 
 Point **Settings → API URL** at your LM Studio server (default `http://localhost:1234/v1/chat/completions`). Use a model with native tool use (e.g. Qwen2.5-Instruct, Llama 3.1+).
 
+### Load the starter tools
+
+1. In the tool editor pane, click **Load**.
+2. Open [`default.lmtools`](default.lmtools) from this repo (same folder as `README.md`).
+3. Confirm the schema status shows **✓ 7 tools** and the implementation pane contains the shared `run` dispatcher.
+
+You can read and edit `default.lmtools` like any other tool file — it is not bundled into the app. Save a copy under another name if you want to experiment without changing the original.
+
+### Load the starter system prompt
+
+1. In the inference panel (between chat and the document), find the **Prompt file** bar above the system prompt textarea.
+2. Click **Open** and choose [`default.prompt`](default.prompt) from this repo.
+3. The textarea fills with the starter instructions; tweak them if you like, then **Save** or **Save as…** to write a copy.
+
+Like `default.lmtools`, `default.prompt` is not bundled — you open it from the repo when you want it.
+
 ### Tests
 
 ```bash
@@ -69,16 +88,17 @@ LLM_SMOKE=1 LLM_API_URL=http://localhost:1234/v1/chat/completions npm run test:s
 
 ## Tool files
 
-### `default.lmtools` (built-in, bundled)
+### `default.lmtools` (starter set, not bundled)
 
-Editor document tools live in **`src/default.lmtools`**. The app loads this file at startup and registers all seven schemas with LM Studio. You do not need to copy or redefine these names in your own `.lmtool` file — the schema pane will reject reserved names like `replace_line`.
+[`default.lmtools`](default.lmtools) lives at the **repository root** as a separate file. The app does **not** load it automatically — you open it with **Load** in the tool editor when you want document-editing tools.
 
-**Implementation** (dispatches to the host `editorTools` runtime):
+It contains seven OpenAI-style function schemas plus one JavaScript implementation that dispatches to the host `editorTools` runtime:
 
 ```javascript
 /**
- * Built-in document tools for LLIMEdit.
- * Loaded from default.lmtools — do not redefine these names in your own .lmtool file.
+ * Default document tools for LLIMEdit.
+ * Load this file in the tool editor (Load → default.lmtools) to give the agent
+ * read/write access to the document buffer.
  */
 async function run(args, ctx) {
   const name = ctx.toolName;
@@ -89,34 +109,13 @@ async function run(args, ctx) {
 }
 ```
 
-**Schema** (array of OpenAI-style function definitions — one entry shown; the file contains all seven):
+Tool names: `get_document`, `goto_line`, `insert_text`, `replace_line`, `replace_span`, `delete_lines`, `delete_span`.
 
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "replace_line",
-    "description": "Replace the entire content of a single line. text is the full new line content (not a substring). If text contains newlines, the line expands into multiple lines.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "line": { "type": "integer", "description": "1-based line number" },
-        "text": { "type": "string", "description": "Complete replacement content for the line" }
-      },
-      "required": ["line", "text"],
-      "additionalProperties": false
-    }
-  }
-}
-```
+See [`default.lmtools`](default.lmtools) for the full schema array.
 
-Built-in tool names: `get_document`, `goto_line`, `insert_text`, `replace_line`, `replace_span`, `delete_lines`, `delete_span`.
+### `.lmtool` / `.lmtools` (your custom tools)
 
-See [`src/default.lmtools`](src/default.lmtools) for the full bundled file.
-
-### `.lmtool` (your custom tools)
-
-Save your own tools as a `.lmtool` file from the tool editor bar (**Load** / **Save** / **Save as…**):
+Save your own tools from the tool editor bar (**Load** / **Save** / **Save as…**):
 
 ```json
 {
@@ -141,31 +140,37 @@ Save your own tools as a `.lmtool` file from the tool editor bar (**Load** / **S
 ```
 
 - **`implementation`** — must define `async function run(args, ctx)`. `ctx` includes `text`, `path`, `contextAnchor`, and `toolName` (the function the model called).
-- **`schema`** — a single tool object or an array of tools. Names must not overlap `default.lmtools`.
-- Set `changed: true` and return `new_text` when mutating the document (same contract as built-in edit tools).
+- **`schema`** — a single tool object or an array of tools. Tool names must be unique within the file.
+- Set `changed: true` and return `new_text` when mutating the document (same contract as the document edit tools in `default.lmtools`).
 
 ---
 
 ## System prompt
 
-Your **Settings → System Prompt** is prepended to a built-in block in [`src/agent.js`](src/agent.js) (`DEFAULT_TOOL_SYSTEM`) that explains line numbers, `>>` selection markers, and that edits must go through tool calls.
+The **system prompt** lives in the inference panel textarea. Use **Open** / **Save** / **Save as…** on the **Prompt file** bar to work with `.prompt` files (plain text). Your text is also persisted in app settings when you edit the textarea.
+
+[`default.prompt`](default.prompt) is the repo starter — a general LLIMEdit writing-assistant persona. Open it from the inference panel when you are learning the app; fork it under another name to experiment.
+
+Whatever you type is prepended (when non-empty) to a built-in block in [`src/agent.js`](src/agent.js) (`DEFAULT_TOOL_SYSTEM`) that explains line numbers, `>>` selection markers, and that edits must go through tool calls.
 
 Tips:
 
-- **Steer persona and policy** in your prompt; do not re-list the seven built-in tools — they are already in `default.lmtools` and attached to every request.
-- **Prefer Markdown** for behavioural guidance; JSON is fine for parallel persona fields.
+- **Steer persona and policy** in your prompt; the exact tool names come from whatever file you loaded in the tool editor.
+- **Prefer plain text or Markdown** for behavioural guidance.
 - **Do not** instruct the model to emit JSON tool calls in `content`; use native `tool_calls`.
 
-### Example: surgical editor (Markdown)
+### `default.prompt` (starter, not bundled)
 
-```md
-You are a careful, surgical text-editing assistant.
+```text
+You are LLIMEdit, a helpful writing assistant.
 
-Make the minimal edit that satisfies the request. Preserve indentation and blank lines unless asked otherwise.
-Use the editor tools you have been given; do not paste replacement text into chat as a substitute for tool calls.
-If the request is ambiguous, ask one short clarifying question before editing.
-After tools run, summarize what changed in plain language.
+You work inside a plain-text document editor. When the user asks you to change the document,
+use the tools loaded in the tool editor — do not paste replacement text into chat as a
+substitute for tool calls.
+…
 ```
+
+See [`default.prompt`](default.prompt) for the full starter text.
 
 ---
 
@@ -173,10 +178,10 @@ After tools run, summarize what changed in plain language.
 
 ```
 LLMEditor/
+├── default.lmtools          # Starter document tools (load via tool editor)
+├── default.prompt           # Starter system prompt (open via inference panel)
 ├── src/
-│   ├── default.lmtools      # Built-in document tools (schemas + impl)
-│   ├── default_tools.js     # Loader for default.lmtools
-│   ├── tool_editor.js       # .lmtool editor + user tool execution
+│   ├── tool_editor.js       # .lmtool editor + tool execution
 │   ├── tool_code_highlight.js
 │   ├── agent.js             # Multi-turn agent loop
 │   ├── editor_tools.js      # Document edit primitives
