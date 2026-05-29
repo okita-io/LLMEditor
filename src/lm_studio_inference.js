@@ -10,6 +10,7 @@
 /** Defaults aligned with `Settings::default()` inference fields in Rust. */
 export const LM_STUDIO_INFERENCE_DEFAULTS = Object.freeze({
   temperature: 0.2,
+  seed: 0,
   max_tokens: 2048,
   system_prompt: "",
   limit_response_length: true,
@@ -151,6 +152,11 @@ export function applyInferenceSettings(body, settings) {
   // model's own default so non-reasoning models aren't affected.
   if (s.reasoning_enabled === false) {
     body.reasoning_effort = "minimal";
+  }
+
+  const seed = Math.trunc(Number(s.seed));
+  if (Number.isFinite(seed) && seed > 0) {
+    body.seed = seed;
   }
 }
 

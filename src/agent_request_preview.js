@@ -32,6 +32,11 @@ export function formatInferenceSettingsSummary(settings) {
     `API URL: ${s.api_url ?? "(default)"}`,
     `Model: ${s.model ?? "(none)"}`,
     `Temperature: ${s.temperature ?? LM_STUDIO_INFERENCE_DEFAULTS.temperature}`,
+    `Seed: ${
+      Number.isFinite(Number(s.seed)) && Number(s.seed) > 0
+        ? Number(s.seed)
+        : "random (0)"
+    }`,
     `Reasoning: ${s.reasoning_enabled === false ? "off (reasoning_effort: minimal)" : "on (model default)"}`,
   ];
 

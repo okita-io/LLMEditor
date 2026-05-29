@@ -188,6 +188,10 @@ fn apply_inference_settings(body: &mut serde_json::Map<String, Value>, s: &Setti
     if !s.reasoning_enabled {
         body.insert("reasoning_effort".into(), json!("minimal"));
     }
+
+    if s.seed > 0 {
+        body.insert("seed".into(), json!(s.seed));
+    }
 }
 
 fn parse_stop_strings(raw: &str) -> Vec<String> {
@@ -1609,6 +1613,21 @@ mod tests {
         s.reasoning_enabled = false;
         let body = build_body("user", &s, false);
         assert_eq!(body["reasoning_effort"], "minimal");
+    }
+
+    #[test]
+    fn build_body_omits_seed_when_zero() {
+        let s = settings_with_prompt("");
+        let body = build_body("user", &s, false);
+        assert!(body.get("seed").is_none());
+    }
+
+    #[test]
+    fn build_body_includes_seed_when_positive() {
+        let mut s = settings_with_prompt("");
+        s.seed = 424242;
+        let body = build_body("user", &s, false);
+        assert_eq!(body["seed"], 424242);
     }
 
     #[test]

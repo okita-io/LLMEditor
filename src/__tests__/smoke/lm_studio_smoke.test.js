@@ -13,6 +13,7 @@ import {
   getSmokeConfig,
   installLmStudioBridge,
   liveAgentTurn,
+  liveSimpleCompletion,
   pingLmStudio,
 } from "./helpers/lm_studio_client.js";
 import {
@@ -78,6 +79,67 @@ describe.skipIf(!smokeEnabled)("LM Studio live smoke", () => {
     expect(body.temperature).toBe(config.temperature);
     expect(Array.isArray(body.tools)).toBe(true);
     expect(body.tools.length).toBeGreaterThan(0);
+  }, config.timeoutMs);
+
+  it("sends seed on POST when seed is non-zero", async () => {
+    const { settings } = await installLmStudioBridge(config, {
+      settings: {
+        seed: 123456,
+        temperature: 0,
+        limit_response_length: true,
+        max_tokens: 8,
+      },
+    });
+
+    await liveSimpleCompletion(
+      [{ role: "user", content: "Reply with exactly: OK" }],
+      settings,
+      config
+    );
+
+    const body = getLastRequestBody();
+    expect(body?.seed).toBe(123456);
+  }, config.timeoutMs);
+
+  it("omits seed on POST when seed is 0", async () => {
+    const { settings } = await installLmStudioBridge(config, {
+      settings: {
+        seed: 0,
+        temperature: 0,
+        limit_response_length: true,
+        max_tokens: 8,
+      },
+    });
+
+    await liveSimpleCompletion(
+      [{ role: "user", content: "Reply with exactly: OK" }],
+      settings,
+      config
+    );
+
+    const body = getLastRequestBody();
+    expect(body?.seed).toBeUndefined();
+  }, config.timeoutMs);
+
+  it("uses seed for reproducible completions at temperature 0", async () => {
+    const { settings } = await installLmStudioBridge(config, {
+      settings: {
+        seed: 987654,
+        temperature: 0,
+        top_p_enabled: false,
+        min_p_enabled: false,
+        repeat_penalty_enabled: false,
+        limit_response_length: true,
+        max_tokens: 16,
+      },
+    });
+
+    const messages = [{ role: "user", content: "Reply with exactly one word: pineapple" }];
+    const first = await liveSimpleCompletion(messages, settings, config);
+    const second = await liveSimpleCompletion(messages, settings, config);
+
+    expect(first).toBeTruthy();
+    expect(second).toBe(first);
   }, config.timeoutMs);
 
   it("replace_line: edits a selected line via chat agent", async () => {

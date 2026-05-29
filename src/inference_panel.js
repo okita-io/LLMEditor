@@ -27,6 +27,7 @@ let confirmModalOnConfirm = null;
 
 const INFERENCE_DEFAULTS = Object.freeze({
   temperature: 0.2,
+  seed: 0,
   max_tokens: 2048,
   system_prompt: "",
   limit_response_length: true,
@@ -105,6 +106,7 @@ function readInferenceValues() {
   return {
     system_prompt: inputValue("inference-system-prompt"),
     temperature: Number(inputValue("inference-temperature")),
+    seed: Math.max(0, Math.trunc(Number(inputValue("inference-seed")) || 0)),
     limit_response_length: Boolean($("inference-limit-length")?.checked),
     max_tokens: Number(inputValue("inference-max-tokens")),
     context_overflow_policy: inputValue("inference-context-overflow"),
@@ -132,6 +134,7 @@ function applySettingsToPanel(settings) {
   const merged = { ...INFERENCE_DEFAULTS, ...(settings || {}) };
   setValue("inference-system-prompt", merged.system_prompt);
   setValue("inference-temperature", merged.temperature);
+  setValue("inference-seed", merged.seed);
   setValue("inference-limit-length", merged.limit_response_length);
   setValue("inference-max-tokens", merged.max_tokens);
   setValue("inference-context-overflow", merged.context_overflow_policy);
@@ -814,6 +817,16 @@ function buildPanelDom() {
         min: "0",
         max: "2",
         step: "0.1",
+      })
+    )
+  );
+
+  scroll.appendChild(
+    makeRow(
+      "Seed (0 = random)",
+      makeInput("inference-seed", "number", {
+        min: "0",
+        step: "1",
       })
     )
   );

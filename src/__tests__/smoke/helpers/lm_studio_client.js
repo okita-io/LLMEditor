@@ -189,6 +189,41 @@ export function parseAgentTurnResponse(envelope) {
 }
 
 /**
+ * POST a simple chat completion (no tools) and return assistant text.
+ *
+ * @param {Array<Record<string, unknown>>} messages
+ * @param {Record<string, unknown>} settings
+ * @param {ReturnType<typeof getSmokeConfig>} config
+ * @returns {Promise<string|null>}
+ */
+export async function liveSimpleCompletion(messages, settings, config) {
+  const model =
+    typeof settings.model === "string" && settings.model.length > 0
+      ? settings.model
+      : await resolveSmokeModel(config.apiUrl, config.model);
+
+  const mergedSettings = { ...settings, model, api_url: config.apiUrl };
+  const body = buildLmStudioChatBody(mergedSettings, messages, { stream: false });
+  lastRequestBody = body;
+
+  const res = await fetchWithTimeout(
+    config.apiUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    config.timeoutMs
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`completion failed: HTTP ${res.status} ${detail}`.trim());
+  }
+  const envelope = await res.json();
+  return parseAgentTurnResponse(envelope).content;
+}
+
+/**
  * Install a Tauri IPC stub that forwards agent_turn to live LM Studio.
  *
  * @param {ReturnType<typeof getSmokeConfig>} config

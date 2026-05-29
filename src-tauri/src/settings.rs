@@ -91,6 +91,9 @@ pub const MIN_P_MIN: f64 = 0.0;
 /// Inclusive maximum value of `min_p`.
 pub const MIN_P_MAX: f64 = 1.0;
 
+/// `seed` of zero means random sampling; positive values request deterministic output.
+pub const SEED_MIN: i64 = 0;
+
 /// Inclusive maximum length of `stop_strings` in Unicode code points.
 pub const STOP_STRINGS_MAX_CHARS: usize = 4096;
 
@@ -179,6 +182,8 @@ impl Default for ContextOverflowPolicy {
 pub struct InferencePreset {
     pub system_prompt: String,
     pub temperature: f64,
+    #[serde(default)]
+    pub seed: i64,
     pub limit_response_length: bool,
     pub max_tokens: u32,
     pub context_overflow_policy: ContextOverflowPolicy,
@@ -203,6 +208,7 @@ impl Default for InferencePreset {
         Self {
             system_prompt: String::new(),
             temperature: 0.2,
+            seed: 0,
             limit_response_length: true,
             max_tokens: 2048,
             context_overflow_policy: ContextOverflowPolicy::default(),
@@ -244,6 +250,9 @@ pub struct Settings {
     pub model: String,
     pub temperature: f64,
     pub max_tokens: u32,
+    /// Random seed for LM Studio (`0` = random; positive values request deterministic output).
+    #[serde(default)]
+    pub seed: i64,
     pub replace_mode: ReplaceMode,
     pub system_prompt: String,
     /// Spaces inserted when the user presses Tab in the editor (2 or 4).
@@ -342,6 +351,7 @@ impl Default for Settings {
             model: "local-model".to_string(),
             temperature: 0.2,
             max_tokens: 2048,
+            seed: 0,
             replace_mode: ReplaceMode::ReplaceDocument,
             system_prompt: String::new(),
             tab_spaces: 4,
@@ -376,6 +386,9 @@ impl InferencePreset {
             errs.push(e);
         }
         if let Err(e) = validate_temperature(self.temperature) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_seed(self.seed) {
             errs.push(e);
         }
         if let Err(e) = validate_max_tokens(self.max_tokens) {
@@ -414,6 +427,7 @@ impl InferencePreset {
         Self {
             system_prompt: s.system_prompt.clone(),
             temperature: s.temperature,
+            seed: s.seed,
             limit_response_length: s.limit_response_length,
             max_tokens: s.max_tokens,
             context_overflow_policy: s.context_overflow_policy,
@@ -437,6 +451,7 @@ impl InferencePreset {
     pub fn apply_to(&self, settings: &mut Settings) {
         settings.system_prompt = self.system_prompt.clone();
         settings.temperature = self.temperature;
+        settings.seed = self.seed;
         settings.limit_response_length = self.limit_response_length;
         settings.max_tokens = self.max_tokens;
         settings.context_overflow_policy = self.context_overflow_policy;
@@ -472,6 +487,9 @@ impl Settings {
             errs.push(e);
         }
         if let Err(e) = validate_temperature(self.temperature) {
+            errs.push(e);
+        }
+        if let Err(e) = validate_seed(self.seed) {
             errs.push(e);
         }
         if let Err(e) = validate_max_tokens(self.max_tokens) {
@@ -550,6 +568,10 @@ impl Settings {
             "temperature" => {
                 let n = expect_f64(name, value)?;
                 validate_temperature(n)
+            }
+            "seed" => {
+                let n = expect_i64(name, value)?;
+                validate_seed(n)
             }
             "max_tokens" => {
                 let n = expect_u32(name, value)?;
@@ -968,6 +990,17 @@ fn validate_min_p(n: f64) -> Result<(), FieldError> {
     Ok(())
 }
 
+fn validate_seed(n: i64) -> Result<(), FieldError> {
+    if n >= SEED_MIN {
+        Ok(())
+    } else {
+        Err(FieldError::new(
+            "seed",
+            format!("must be at least {SEED_MIN} (0 means random)"),
+        ))
+    }
+}
+
 fn validate_stop_strings(s: &str) -> Result<(), FieldError> {
     let len = char_len(s);
     if len > STOP_STRINGS_MAX_CHARS {
@@ -1015,6 +1048,17 @@ fn expect_u32(name: &str, v: &serde_json::Value) -> Result<u32, FieldError> {
         .as_u64()
         .ok_or_else(|| FieldError::new(name, "expected a non-negative integer"))?;
     u32::try_from(n).map_err(|_| FieldError::new(name, "value does not fit in a 32-bit integer"))
+}
+
+fn expect_i64(name: &str, v: &serde_json::Value) -> Result<i64, FieldError> {
+    if let Some(n) = v.as_i64() {
+        return Ok(n);
+    }
+    if let Some(n) = v.as_u64() {
+        return i64::try_from(n)
+            .map_err(|_| FieldError::new(name, "value does not fit in a 64-bit integer"));
+    }
+    Err(FieldError::new(name, "expected an integer"))
 }
 
 fn expect_bool(name: &str, v: &serde_json::Value) -> Result<(), FieldError> {

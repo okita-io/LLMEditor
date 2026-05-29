@@ -77,6 +77,18 @@ describe("applyInferenceSettings", () => {
     applyInferenceSettings(body, defaultLmStudioSettings({ reasoning_enabled: false }));
     expect(body.reasoning_effort).toBe("minimal");
   });
+
+  it("omits seed when seed is 0 (random)", () => {
+    const body = {};
+    applyInferenceSettings(body, defaultLmStudioSettings({ seed: 0 }));
+    expect(body.seed).toBeUndefined();
+  });
+
+  it("includes seed when a positive value is set", () => {
+    const body = {};
+    applyInferenceSettings(body, defaultLmStudioSettings({ seed: 424242 }));
+    expect(body.seed).toBe(424242);
+  });
 });
 
 describe("buildLmStudioChatBody", () => {
