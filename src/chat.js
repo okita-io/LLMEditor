@@ -533,6 +533,43 @@ function prettyJson(raw) {
 }
 
 /**
+ * Compact JSON for a single-line tool invocation (preserves invalid JSON as-is).
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+function compactJsonForInvocation(raw) {
+  if (typeof raw !== "string" || raw.length === 0) return "{}";
+  try {
+    return JSON.stringify(JSON.parse(raw));
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * @param {string} name
+ * @param {string} argsJson
+ * @returns {string}
+ */
+export function formatToolInvocation(name, argsJson) {
+  const toolName = typeof name === "string" && name.length > 0 ? name : "(unknown)";
+  return `${toolName}(${compactJsonForInvocation(argsJson)})`;
+}
+
+/**
+ * @param {HTMLElement} bubble
+ * @param {string} invocation
+ * @returns {void}
+ */
+function appendToolInvocation(bubble, invocation) {
+  const pre = document.createElement("pre");
+  pre.className = "chat-tool-invocation";
+  pre.textContent = invocation;
+  bubble.appendChild(pre);
+}
+
+/**
  * @param {Record<string, unknown> | null | undefined} documentView
  * @returns {string}
  */
@@ -826,11 +863,12 @@ export function appendToolCall(name, argsJson, documentView = null, toolCallId =
   }
 
   const label = document.createElement("div");
-  label.className = "chat-bubble-label";
-  label.textContent = `Tool call: ${name}`;
+  label.className = "chat-bubble-label chat-bubble-label-tool";
+  label.textContent = "Tool call";
   bubble.appendChild(label);
 
-  appendLogSection(bubble, "Arguments", prettyJson(argsJson));
+  appendToolInvocation(bubble, formatToolInvocation(name, argsJson));
+  appendLogSection(bubble, "Arguments (formatted)", prettyJson(argsJson));
   appendLogSection(
     bubble,
     "Document before tool (model's view)",
@@ -847,19 +885,23 @@ export function appendToolCall(name, argsJson, documentView = null, toolCallId =
  * @param {string} [toolCallId]
  * @returns {void}
  */
-export function appendToolResult(name, result, toolCallId = "") {
+export function appendToolResult(name, result, toolCallId = "", argsJson = "") {
   if (!messagesEl) return;
   const bubble = document.createElement("div");
-  bubble.className = "chat-bubble chat-bubble-tool-result";
+  const failed = !result || result.ok !== true;
+  bubble.className = failed
+    ? "chat-bubble chat-bubble-tool-result chat-bubble-tool-failed"
+    : "chat-bubble chat-bubble-tool-result";
   if (typeof toolCallId === "string" && toolCallId.length > 0) {
     bubble.dataset.toolCallId = toolCallId;
   }
 
   const label = document.createElement("div");
-  label.className = "chat-bubble-label";
-  label.textContent = `Tool result: ${name}`;
+  label.className = "chat-bubble-label chat-bubble-label-tool";
+  label.textContent = failed ? "Tool failed" : "Tool result";
   bubble.appendChild(label);
 
+  appendToolInvocation(bubble, formatToolInvocation(name, argsJson));
   appendLogSection(bubble, "Summary", summarizeToolResult(name, result ?? {}));
   appendLogSection(
     bubble,
@@ -1212,7 +1254,12 @@ export function initializeChat() {
       const result =
         detail && typeof detail === "object" && detail.result ? detail.result : null;
       if (!toolCall || typeof toolCall.name !== "string") return;
-      appendToolResult(toolCall.name, result ?? {}, toolCall.id ?? "");
+      appendToolResult(
+        toolCall.name,
+        result ?? {},
+        toolCall.id ?? "",
+        toolCall.arguments ?? "{}"
+      );
     });
 
     document.addEventListener("editor:chat-token", (event) => {

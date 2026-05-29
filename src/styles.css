@@ -604,13 +604,21 @@ body {
 }
 
 .chat-bubble-tool {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--warning) 7%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  border-left: 4px solid var(--warning);
 }
 
 .chat-bubble-tool-result {
-  background: var(--bg-secondary);
-  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--success) 6%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  border-left: 4px solid var(--success);
+}
+
+.chat-bubble-tool-result.chat-bubble-tool-failed {
+  background: color-mix(in srgb, #f14c4c 7%, var(--bg-secondary));
+  border-color: color-mix(in srgb, #f14c4c 50%, var(--border));
+  border-left-color: #f14c4c;
 }
 
 .chat-bubble-context {
@@ -660,9 +668,47 @@ body {
   border-style: dashed;
 }
 
-.chat-bubble-tool .chat-bubble-label,
-.chat-bubble-tool-result .chat-bubble-label {
+.chat-bubble-label-tool {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chat-bubble-tool .chat-bubble-label-tool {
   color: var(--warning);
+}
+
+.chat-bubble-tool-result .chat-bubble-label-tool {
+  color: var(--success);
+}
+
+.chat-bubble-tool-result.chat-bubble-tool-failed .chat-bubble-label-tool {
+  color: #f14c4c;
+}
+
+.chat-tool-invocation {
+  margin: 4px 0 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.chat-bubble-tool-result .chat-tool-invocation {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+
+.chat-bubble-tool-result.chat-bubble-tool-failed .chat-tool-invocation {
+  border-color: color-mix(in srgb, #f14c4c 45%, var(--border));
 }
 
 .chat-log-section {

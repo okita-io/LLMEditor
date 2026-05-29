@@ -23,6 +23,7 @@ import {
   finalizeAssistantMessage,
   appendToolCall,
   appendToolResult,
+  formatToolInvocation,
   appendAgentContext,
   addUserMessage,
   _internal,
@@ -179,8 +180,22 @@ describe("assistant message lifecycle", () => {
   });
 });
 
+describe("formatToolInvocation", () => {
+  it("formats name and compact JSON arguments", () => {
+    expect(formatToolInvocation("replace_line", '{"line":1,"text":"x"}')).toBe(
+      'replace_line({"line":1,"text":"x"})'
+    );
+  });
+
+  it("preserves invalid JSON in the invocation string", () => {
+    expect(formatToolInvocation("replace_line", "{not json")).toBe(
+      "replace_line({not json)"
+    );
+  });
+});
+
 describe("appendToolCall", () => {
-  it("renders a tool bubble with name, args, and document view", () => {
+  it("renders a tool bubble with invocation, args, and document view", () => {
     installDom();
     appendToolCall("replace_line", '{"line":1,"text":"x"}', {
       numbered: "     1|   hello",
@@ -192,8 +207,11 @@ describe("appendToolCall", () => {
     });
     const bubble = document.querySelector(".chat-bubble-tool");
     expect(bubble).not.toBeNull();
-    expect(bubble.textContent).toContain("Tool call: replace_line");
-    expect(bubble.textContent).toContain("Arguments");
+    expect(bubble.textContent).toContain("Tool call");
+    expect(bubble.querySelector(".chat-tool-invocation").textContent).toBe(
+      'replace_line({"line":1,"text":"x"})'
+    );
+    expect(bubble.textContent).toContain("Arguments (formatted)");
     expect(bubble.textContent).toContain("Document before tool");
     expect(bubble.textContent).toContain("hello");
   });
@@ -223,20 +241,39 @@ describe("appendAgentContext", () => {
 });
 
 describe("appendToolResult", () => {
-  it("renders a success result with JSON payload", () => {
+  it("renders a success result with invocation and JSON payload", () => {
     installDom();
-    appendToolResult("replace_line", { ok: true, changed: true, line: 1 });
+    appendToolResult(
+      "replace_line",
+      { ok: true, changed: true, line: 1 },
+      "",
+      '{"line":1,"text":"x"}'
+    );
     const bubble = document.querySelector(".chat-bubble-tool-result");
     expect(bubble).not.toBeNull();
+    expect(bubble.classList.contains("chat-bubble-tool-failed")).toBe(false);
+    expect(bubble.querySelector(".chat-tool-invocation").textContent).toBe(
+      'replace_line({"line":1,"text":"x"})'
+    );
     expect(bubble.textContent).toContain("document updated");
     expect(bubble.textContent).toContain("Return value (as sent to model)");
     expect(bubble.textContent).toContain('"ok": true');
   });
 
-  it("renders an error result", () => {
+  it("renders an error result with failed styling and invocation", () => {
     installDom();
-    appendToolResult("insert_text", { ok: false, error: "invalid line" });
+    appendToolResult(
+      "insert_text",
+      { ok: false, error: "invalid line" },
+      "",
+      '{"line":99,"text":"x"}'
+    );
     const bubble = document.querySelector(".chat-bubble-tool-result");
+    expect(bubble.classList.contains("chat-bubble-tool-failed")).toBe(true);
+    expect(bubble.textContent).toContain("Tool failed");
+    expect(bubble.querySelector(".chat-tool-invocation").textContent).toBe(
+      'insert_text({"line":99,"text":"x"})'
+    );
     expect(bubble.textContent).toContain("failed");
     expect(bubble.textContent).toContain("invalid line");
   });
