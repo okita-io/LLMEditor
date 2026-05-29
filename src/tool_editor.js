@@ -35,11 +35,28 @@ let toolDirty = false;
 
 /** @type {Array<Record<string, unknown>>} */
 let parsedTools = [];
+/**
+ * Most recently valid parsed tool schemas. Retained so an in-progress invalid
+ * edit to the Schema_Pane does not strip the model's tools (Req 5.8). The
+ * status display still reflects the current (possibly invalid) content via
+ * schemaValid, but getAgentToolSchemas falls back to this when invalid.
+ * @type {Array<Record<string, unknown>>}
+ */
+let lastValidParsedTools = [];
 /** @type {boolean} */
 let schemaValid = true;
 
 /** @type {string | null} */
 let testImplementationOverride = null;
+
+/**
+ * Memoized compilation of the Implementation_Pane source into a name→function
+ * registry. Keyed on the exact source string so unsaved Implementation_Pane
+ * edits (a new string) trigger recompilation (Req 5.4, 5.5) while repeated
+ * calls with unchanged source reuse the compiled registry.
+ * @type {{ source: string, registry: Record<string, Function> } | null}
+ */
+let compiledImplCache = null;
 
 /** @type {(() => Promise<string|null>) | null} */
 let openDialogOverride = null;
@@ -60,6 +77,7 @@ function applySchemaFromRaw(raw) {
 
   if (!trimmed) {
     parsedTools = [];
+    lastValidParsedTools = [];
     schemaValid = true;
     updateSchemaStatus("", "idle");
     notifyToolFileChanged();
@@ -95,6 +113,7 @@ function applySchemaFromRaw(raw) {
     }
     schemaValid = true;
     const n = parsedTools.length;
+    lastValidParsedTools = parsedTools;
     updateSchemaStatus(`✓ ${n} tool${n !== 1 ? "s" : ""}`, "valid");
   } catch (err) {
     parsedTools = [];
@@ -399,22 +418,32 @@ export function getUserTools() {
   return parsedTools;
 }
 
-/** Tools from the loaded tool file (sent to LM Studio). */
-export function getAgentTools() {
-  return parsedTools;
-}
-
-/** @deprecated Use getAgentTools — kept for call-site compatibility. */
-export function getCustomTools() {
-  return getAgentTools();
+/**
+ * Schema_Accessor. Tools from the loaded tool file (sent to LM Studio).
+ * Returns the loaded Tool_Schema array, or [] when nothing is loaded.
+ * When the current Schema_Pane buffer is invalid, returns the most recently
+ * valid tool definitions so an in-progress invalid edit does not strip the
+ * model's tools (Req 5.8). The status display still reflects the current
+ * invalid content via schemaValid / updateSchemaStatus (Req 4.7).
+ * @returns {Array<Record<string, unknown>>}
+ */
+export function getAgentToolSchemas() {
+  return schemaValid ? parsedTools : lastValidParsedTools;
 }
 
 export function hasCustomTools() {
   return schemaValid && parsedTools.length > 0;
 }
 
+/**
+ * Schema-membership check. Reads tool names from getAgentToolSchemas() so the
+ * Agent_Loop's unknown-tool detection mirrors exactly the schema advertised to
+ * the model (including last-valid retention when the current edit is invalid).
+ * @param {string} name
+ * @returns {boolean}
+ */
 export function isUserCustomTool(name) {
-  for (const tool of parsedTools) {
+  for (const tool of getAgentToolSchemas()) {
     const fn = tool.function;
     if (fn && typeof fn === "object" && fn.name === name) return true;
     if (tool.name === name) return true;
@@ -427,24 +456,102 @@ export function isCustomTool(name) {
   return isUserCustomTool(name);
 }
 
-export async function executeCustomTool(name, args, ctx) {
-  const code = (
-    implEditorEl ? implEditorEl.value : testImplementationOverride ?? ""
-  ).trim();
+/**
+ * Reads the current Implementation_Pane source, mirroring how
+ * executeCustomTool reads it so the two stay consistent: the live pane value
+ * when the editor is mounted, otherwise the test override.
+ * @returns {string}
+ */
+function readImplementationSource() {
+  return implEditorEl ? implEditorEl.value : testImplementationOverride ?? "";
+}
+
+/**
+ * Function_Accessor. Compiles the loaded Tool_Implementation and returns a
+ * name→function registry of callable Document_Tool functions. The per-tool
+ * functions close over any helpers defined in the implementation string.
+ *
+ * - Returns the `tools` registry object when the implementation defines one.
+ * - Returns `{ run }` for implementations that define only `run`.
+ * - Returns `{}` for empty/whitespace implementations.
+ *
+ * Compilation is memoized on the exact source string so unsaved
+ * Implementation_Pane edits (a new string) trigger recompilation (Req 5.4,
+ * 5.5) while repeated calls with unchanged source reuse the compiled registry.
+ * @returns {Record<string, (args: object, ctx: object) => (object | Promise<object>)>}
+ */
+export function getAgentToolFunctions() {
+  const code = readImplementationSource().trim();
+
+  if (!code) {
+    return {};
+  }
+
+  if (compiledImplCache && compiledImplCache.source === code) {
+    return compiledImplCache.registry;
+  }
+
+  const factory = new Function(
+    `${code}\n;return (typeof tools !== 'undefined' && tools) ? tools : (typeof run === 'function' ? { run } : {});`
+  );
+  const registry = factory();
+  const resolved =
+    registry && typeof registry === "object" ? registry : {};
+  compiledImplCache = { source: code, registry: resolved };
+  return resolved;
+}
+
+/**
+ * Tool_Runtime. Resolves the executable function for `name` from
+ * getAgentToolFunctions and executes it, following the design's resolution
+ * algorithm.
+ *
+ * - Empty/whitespace implementation → no-implementation result (Req 10.1).
+ * - Resolve `fn` from the compiled registry; fall back to a `run`-dispatch
+ *   wrapper when the name is absent but `run` exists (user tools + legacy
+ *   names). Otherwise → no-available-implementation result (Req 3.5).
+ * - Run `fn(args, { ...ctx, toolName: name })` inside try/catch; non-object
+ *   returns wrap as `{ ok:true, result, changed:false }`; thrown errors return
+ *   a tool-execution-error result (Req 10.2 / 10.4).
+ *
+ * @param {string} name
+ * @param {object} args
+ * @param {object} ctx
+ * @returns {Promise<Record<string, unknown>>} a Tool_Result
+ */
+export async function executeAgentTool(name, args, ctx) {
+  const code = readImplementationSource().trim();
 
   if (!code) {
     return {
       ok: false,
-      error: `Custom tool "${name}" has no implementation in the JS pane.`,
+      error: `Tool "${name}" has no implementation in the JS pane.`,
       changed: false,
     };
   }
 
+  let fns;
   try {
-    const AsyncFunction = /** @type {typeof Function} */ (
-      Object.getPrototypeOf(async function () {}).constructor
-    );
-    const fn = new AsyncFunction("args", "ctx", `${code}\nreturn await run(args, ctx);`);
+    fns = getAgentToolFunctions();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Tool compilation error: ${msg}`, changed: false };
+  }
+
+  let fn = fns[name];
+  if (typeof fn !== "function") {
+    if (typeof fns.run === "function") {
+      fn = (a, c) => fns.run(a, c);
+    } else {
+      return {
+        ok: false,
+        error: `Tool "${name}" has no available implementation.`,
+        changed: false,
+      };
+    }
+  }
+
+  try {
     const result = await fn(args, { ...ctx, toolName: name });
     if (result == null || typeof result !== "object") {
       return { ok: true, result: result ?? "(no return value)", changed: false };
@@ -455,6 +562,13 @@ export async function executeCustomTool(name, args, ctx) {
     return { ok: false, error: `Tool execution error: ${msg}`, changed: false };
   }
 }
+
+/**
+ * @deprecated Alias retained so existing call sites (agent.js / editor.js)
+ * keep working mid-refactor. Tasks 5.1 and 7.1 repoint those call sites to
+ * executeAgentTool, after which this alias can be removed.
+ */
+export { executeAgentTool as executeCustomTool };
 
 // ─── Resize handles ───────────────────────────────────────────────────────────
 
@@ -666,8 +780,10 @@ export const _internal = {
     currentToolPath = null;
     toolDirty = false;
     parsedTools = [];
+    lastValidParsedTools = [];
     schemaValid = true;
     testImplementationOverride = null;
+    compiledImplCache = null;
     openDialogOverride = null;
     saveDialogOverride = null;
     if (schemaEditorEl) schemaEditorEl.value = "";

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as editor from "../editor.js";
 import {
   initializeChat,
@@ -8,6 +8,7 @@ import {
   beginAssistantMessage,
   finalizeAssistantMessage,
 } from "../chat.js";
+import { loadDefaultToolsFixture } from "./setup/default_lmtools_fixture.js";
 
 function installDom() {
   document.body.innerHTML = `
@@ -27,6 +28,7 @@ function installDom() {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  loadDefaultToolsFixture();
 });
 
 afterEach(() => {
@@ -34,7 +36,7 @@ afterEach(() => {
 });
 
 describe("chat apply document edits", () => {
-  it("shows Apply to document when assistant message contains tool-shaped JSON", () => {
+  it("shows Apply to document when assistant message contains tool-shaped JSON", async () => {
     installDom();
     const buffer = document.getElementById("buffer");
     buffer.value = "line1\nline2\nline3\nline4\nline5";
@@ -49,7 +51,9 @@ describe("chat apply document edits", () => {
     expect(btn.textContent).toBe("Apply to document");
 
     btn.click();
-    expect(btn.textContent).toBe("Applied");
-    expect(buffer.value).toContain("build-up");
+    await vi.waitFor(() => {
+      expect(btn.textContent).toBe("Applied");
+      expect(buffer.value).toContain("build-up");
+    });
   });
 });

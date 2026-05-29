@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
-import { getAgentTools } from "../tool_editor.js";
+import { getAgentToolSchemas } from "../tool_editor.js";
 import { defaultLmtoolsPath, loadDefaultToolsFixture } from "./setup/default_lmtools_fixture.js";
 
 const EXPECTED_TOOL_NAMES = [
@@ -31,11 +31,17 @@ describe("default.lmtools", () => {
       expect(names).toContain(expected);
     }
     expect(typeof parsed.implementation).toBe("string");
-    expect(parsed.implementation).toContain("editorTools.executeTool");
+    // The implementation now defines the tool logic directly rather than
+    // forwarding to the harness dispatcher.
+    expect(parsed.implementation).toContain("function run");
+    for (const expected of EXPECTED_TOOL_NAMES) {
+      expect(parsed.implementation).toContain(`function ${expected}`);
+    }
+    expect(parsed.implementation).not.toContain("editorTools.executeTool");
   });
 
   it("loads into the tool editor for agent requests", () => {
-    const schemas = getAgentTools();
+    const schemas = getAgentToolSchemas();
     expect(schemas).toHaveLength(7);
     const names = schemas.map((t) => t.function?.name);
     for (const expected of EXPECTED_TOOL_NAMES) {

@@ -18,9 +18,9 @@ import {
 } from "./context_window.js";
 import { assistantTextLooksLikeUnappliedEdits } from "./document_edits.js";
 import {
-  getAgentTools,
+  getAgentToolSchemas,
   isUserCustomTool,
-  executeCustomTool,
+  executeAgentTool,
 } from "./tool_editor.js";
 
 const MAX_TURNS = 16;
@@ -230,7 +230,7 @@ export async function runAgent(options) {
   ];
 
   const systemPrompt = buildSystemPrompt(settings);
-  const initialRequestBody = buildAgentRequestPreview(settings, messages, getAgentTools());
+  const initialRequestBody = buildAgentRequestPreview(settings, messages, getAgentToolSchemas());
 
   callbacks.onAgentContext?.({
     userContent,
@@ -248,7 +248,7 @@ export async function runAgent(options) {
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const turnNumber = turn + 1;
-    const customTools = getAgentTools();
+    const customTools = getAgentToolSchemas();
     const requestBody = buildAgentRequestPreview(settings, messages, customTools);
 
     callbacks.onAgentTurnRequest?.({
@@ -287,19 +287,34 @@ export async function runAgent(options) {
 
       for (const toolCall of response.tool_calls) {
         const ctx = getContext();
-        const docSnap = editorTools.getDocumentSnapshot(
-          ctx.text,
-          ctx.path ?? null,
-          ctx.contextAnchor ?? null
-        );
-        callbacks.onToolCall?.(toolCall, {
-          numbered: docSnap.numbered,
-          path: docSnap.path,
-          lines: docSnap.lines,
-          is_truncated: docSnap.is_truncated,
-          window_start_line: docSnap.window_start_line,
-          window_end_line: docSnap.window_end_line,
+        // eslint-disable-next-line no-await-in-loop
+        const snap = await executeAgentTool("get_document", {}, {
+          ...ctx,
+          refreshWindow: refreshContextWindow,
         });
+        if (snap && snap.ok === true && typeof snap.content === "string") {
+          callbacks.onToolCall?.(toolCall, {
+            numbered: snap.content,
+            path: snap.path,
+            lines: snap.lines,
+            is_truncated: snap.is_truncated,
+            window_start_line: snap.window_start_line,
+            window_end_line: snap.window_end_line,
+          });
+        } else {
+          // Fallback: the loaded Tool_File lacks a usable get_document.
+          // Show the raw buffer text with no renumbering (display-only;
+          // does not reconstruct tool logic in the harness).
+          const rawText = typeof ctx.text === "string" ? ctx.text : "";
+          callbacks.onToolCall?.(toolCall, {
+            numbered: rawText,
+            path: ctx.path ?? null,
+            lines: rawText.length === 0 ? 0 : rawText.split("\n").length,
+            is_truncated: false,
+            window_start_line: 1,
+            window_end_line: rawText.length === 0 ? 0 : rawText.split("\n").length,
+          });
+        }
 
         let parsedArgs = {};
         let parseError = null;
@@ -314,14 +329,14 @@ export async function runAgent(options) {
         const execCtx = {
           ...ctx,
           toolName: toolCall.name,
-          editorTools,
+          refreshWindow: refreshContextWindow,
         };
 
         let result;
         if (parseError) {
           result = { ok: false, error: parseError, changed: false };
         } else if (isUserCustomTool(toolCall.name)) {
-          result = await executeCustomTool(toolCall.name, parsedArgs, execCtx);
+          result = await executeAgentTool(toolCall.name, parsedArgs, execCtx);
         } else {
           result = {
             ok: false,

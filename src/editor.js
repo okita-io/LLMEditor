@@ -59,10 +59,11 @@
 import * as api from "./api.js";
 import { runAgent } from "./agent.js";
 import { getHistoryForAgent, recordExchange } from "./chat_history.js";
-import { buildContextWindow } from "./context_window.js";
+import { buildContextWindow, refreshContextWindow } from "./context_window.js";
 import { getSelectionForContext } from "./editor_chrome.js";
 import { applyEditorDisplaySettings } from "./editor_display.js";
 import * as editorTools from "./editor_tools.js";
+import { executeAgentTool } from "./tool_editor.js";
 import { extractDocumentEdits } from "./document_edits.js";
 
 let bufferEl = null;
@@ -1098,9 +1099,9 @@ function _scrollToToolResult(el, name, result) {
  * Apply edit payloads extracted from assistant chat text.
  *
  * @param {Array<{ name: string, args: Record<string, unknown> }>} edits
- * @returns {number} count of edits that changed the buffer
+ * @returns {Promise<number>} count of edits that changed the buffer
  */
-export function applyDocumentEdits(edits) {
+export async function applyDocumentEdits(edits) {
   if (!bufferEl || !Array.isArray(edits) || edits.length === 0) return 0;
   if (agentActive || streamActive) return 0;
 
@@ -1109,8 +1110,12 @@ export function applyDocumentEdits(edits) {
   try {
     for (const edit of edits) {
       if (!edit || typeof edit.name !== "string") continue;
-      const ctx = { text: bufferEl.value, path: currentPath };
-      const result = editorTools.executeTool(edit.name, edit.args ?? {}, ctx);
+      const ctx = {
+        text: bufferEl.value,
+        path: currentPath,
+        refreshWindow: refreshContextWindow,
+      };
+      const result = await executeAgentTool(edit.name, edit.args ?? {}, ctx);
       _applyAgentToolResult(bufferEl, edit.name, result);
       if (result.ok === true && result.changed === true) {
         applied += 1;
@@ -1124,9 +1129,9 @@ export function applyDocumentEdits(edits) {
 
 /**
  * @param {string} assistantText
- * @returns {number}
+ * @returns {Promise<number>}
  */
-export function applyDocumentEditsFromAssistantText(assistantText) {
+export async function applyDocumentEditsFromAssistantText(assistantText) {
   const edits = extractDocumentEdits(assistantText);
   return applyDocumentEdits(edits);
 }

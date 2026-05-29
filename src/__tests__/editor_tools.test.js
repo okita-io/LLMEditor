@@ -2,22 +2,15 @@
 // Copyright (c) 2026 okita.io
 
 import { describe, it, expect } from "vitest";
+import * as editorTools from "../editor_tools.js";
 import {
   splitLines,
-  joinLines,
-  getDocumentSnapshot,
-  gotoLine,
-  insertText,
-  replaceLine,
-  replaceSpan,
   resolveSpanColumns,
   lineColumnToIndex,
   applyLineColumnSpan,
-  replaceRange,
-  deleteLines,
-  deleteSpan,
-  deleteRange,
-  executeTool,
+  applyMutatingResult,
+  applyGotoLine,
+  applyToolSideEffects,
 } from "../editor_tools.js";
 
 describe("editor_tools.splitLines", () => {
@@ -30,56 +23,6 @@ describe("editor_tools.splitLines", () => {
   });
 });
 
-describe("editor_tools.getDocumentSnapshot", () => {
-  it("numbers lines from 1", () => {
-    const snap = getDocumentSnapshot("alpha\nbeta");
-    expect(snap.lines).toBe(2);
-    expect(snap.numbered).toBe("1| alpha\n2| beta");
-  });
-});
-
-describe("editor_tools.gotoLine", () => {
-  it("clamps to valid range", () => {
-    expect(gotoLine("only", 99)).toEqual({
-      line: 1,
-      column: 1,
-      line_text: "only",
-    });
-  });
-});
-
-describe("editor_tools.insertText", () => {
-  it("inserts at column within a line", () => {
-    const result = insertText("hello", 1, 6, " world");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("hello world");
-      expect(result.column).toBe(12);
-    }
-  });
-});
-
-describe("editor_tools.replaceLine", () => {
-  it("replaces a single line", () => {
-    const result = replaceLine("one\ntwo\nthree", 2, "TWO");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("one\nTWO\nthree");
-      expect(result.line).toBe(2);
-      expect(result.end_line).toBe(2);
-    }
-  });
-
-  it("expands one line into multiple lines when text contains newlines", () => {
-    const result = replaceLine("a\nb\nc", 2, "x\ny\nz");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("a\nx\ny\nz\nc");
-      expect(result.end_line).toBe(4);
-    }
-  });
-});
-
 describe("editor_tools.resolveSpanColumns", () => {
   it("extends end column past end-of-line to the line end", () => {
     const span = resolveSpanColumns("car", 1, 5);
@@ -89,30 +32,20 @@ describe("editor_tools.resolveSpanColumns", () => {
     expect(span.effective_end_column).toBe(3);
   });
 
-  it("replaces quoted token when span matches its width", () => {
-    const result = replaceSpan('"car", "bike"', 1, 1, 5, '"train"');
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe('"train", "bike"');
-      expect(result.end_column).toBe(5);
-    }
-  });
-});
-
-describe("editor_tools.replaceSpan", () => {
-  it("replaces an inclusive column span within a line", () => {
-    const line = '"items1":["car", "bike", "motorcycle", "van", "train"],';
-    const result = replaceSpan(line, 1, 27, 36, "apple");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe('"items1":["car", "bike", "apple", "van", "train"],');
-    }
+  it("swaps reversed columns", () => {
+    const span = resolveSpanColumns("hello", 4, 2);
+    expect(span.start_column).toBe(2);
+    expect(span.end_column).toBe(4);
   });
 });
 
 describe("editor_tools.lineColumnToIndex", () => {
   it("maps columns past end-of-line to the line end", () => {
     expect(lineColumnToIndex("abc", 1, 99)).toBe(3);
+  });
+
+  it("accounts for preceding lines when computing the offset", () => {
+    expect(lineColumnToIndex("ab\ncd", 2, 2)).toBe(4);
   });
 });
 
@@ -126,137 +59,73 @@ describe("editor_tools.applyLineColumnSpan", () => {
   });
 });
 
-describe("editor_tools.replaceRange", () => {
-  it("replaces inclusive line range (legacy multi-line)", () => {
-    const result = replaceRange("one\ntwo\nthree", 2, 2, "TWO");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("one\nTWO\nthree");
-      expect(result.start_line).toBe(2);
-      expect(result.end_line).toBe(2);
-    }
+describe("editor_tools.applyMutatingResult", () => {
+  it("writes new_text into the buffer for an ok result", () => {
+    const el = document.createElement("textarea");
+    el.value = "todo";
+    const changed = applyMutatingResult(el, { ok: true, new_text: "done" });
+    expect(changed).toBe(true);
+    expect(el.value).toBe("done");
   });
 
-  it("swaps reversed ranges", () => {
-    const result = replaceRange("a\nb\nc", 3, 1, "X");
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("X");
-    }
+  it("leaves the buffer unchanged for a non-ok result", () => {
+    const el = document.createElement("textarea");
+    el.value = "todo";
+    const changed = applyMutatingResult(el, { ok: false, new_text: "done" });
+    expect(changed).toBe(false);
+    expect(el.value).toBe("todo");
   });
 });
 
-describe("editor_tools.deleteLines", () => {
-  it("deletes inclusive lines", () => {
-    const result = deleteLines("a\nb\nc", 1, 2);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("c");
-      expect(result.deleted_lines).toBe(2);
-      expect(result.start_line).toBe(1);
-      expect(result.end_line).toBe(2);
-    }
+describe("editor_tools.applyGotoLine", () => {
+  it("places a collapsed caret at the start of the target line", () => {
+    const el = document.createElement("textarea");
+    el.value = "one\ntwo\nthree";
+    applyGotoLine(el, { ok: true, line: 2 });
+    expect(el.selectionStart).toBe(4);
+    expect(el.selectionEnd).toBe(4);
   });
 });
 
-describe("editor_tools.deleteSpan", () => {
-  it("deletes an inclusive column span within a line", () => {
-    const line = '"items1":["car", "bike", "motorcycle", "van", "train"],';
-    const result = deleteSpan(line, 1, 27, 36);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe('"items1":["car", "bike", "", "van", "train"],');
-    }
+describe("editor_tools.applyToolSideEffects", () => {
+  it("routes goto_line to caret placement", () => {
+    const el = document.createElement("textarea");
+    el.value = "one\ntwo";
+    applyToolSideEffects(el, "goto_line", { ok: true, line: 2 });
+    expect(el.selectionStart).toBe(4);
+    expect(el.selectionEnd).toBe(4);
+  });
+
+  it("routes mutating tools to buffer mutation", () => {
+    const el = document.createElement("textarea");
+    el.value = "todo";
+    applyToolSideEffects(el, "replace_line", { ok: true, new_text: "done" });
+    expect(el.value).toBe("done");
   });
 });
 
-describe("editor_tools.deleteRange", () => {
-  it("delegates to deleteLines (legacy alias)", () => {
-    const result = deleteRange("a\nb\nc", 2, 2);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.text).toBe("a\nc");
-      expect(result.deleted_lines).toBe(1);
-    }
-  });
-});
-
-describe("editor_tools.executeTool", () => {
-  it("returns numbered document via get_document", () => {
-    const result = executeTool("get_document", {}, { text: "x\ny" });
-    expect(result.ok).toBe(true);
-    expect(result.content).toBe("1| x\n2| y");
+// Req 2.2: the Editor_Tools_Module defines no per-tool logic. Every pure tool
+// function and the `executeTool` dispatcher were extracted into the
+// `implementation` field of `default.lmtools`, so they must no longer be
+// exported from the harness.
+describe("editor_tools removed tool logic exports", () => {
+  it("no longer exports the executeTool dispatcher", () => {
+    expect(editorTools.executeTool).toBeUndefined();
   });
 
-  it("mutates via replace_line", () => {
-    const result = executeTool(
-      "replace_line",
-      { line: 1, text: "done" },
-      { text: "todo" }
-    );
-    expect(result.new_text).toBe("done");
+  it("no longer exports the per-tool pure functions", () => {
+    expect(editorTools.getDocumentSnapshot).toBeUndefined();
+    expect(editorTools.gotoLine).toBeUndefined();
+    expect(editorTools.insertText).toBeUndefined();
+    expect(editorTools.replaceLine).toBeUndefined();
+    expect(editorTools.replaceSpan).toBeUndefined();
+    expect(editorTools.deleteSpan).toBeUndefined();
+    expect(editorTools.deleteLines).toBeUndefined();
+    expect(editorTools.replaceRange).toBeUndefined();
+    expect(editorTools.deleteRange).toBeUndefined();
   });
 
-  it("mutates via replace_span", () => {
-    const result = executeTool(
-      "replace_span",
-      { line: 1, start_column: 2, end_column: 4, text: "ip" },
-      { text: "hello" }
-    );
-    expect(result.new_text).toBe("hipo");
-  });
-
-  it("reports effective columns when end column extends past end-of-line", () => {
-    const result = executeTool(
-      "replace_span",
-      { line: 1, start_column: 1, end_column: 5, text: "train" },
-      { text: "car" }
-    );
-    expect(result.new_text).toBe("train");
-    expect(result.end_column).toBe(5);
-    expect(result.effective_end_column).toBe(3);
-  });
-
-  it("mutates via delete_lines", () => {
-    const result = executeTool(
-      "delete_lines",
-      { start_line: 2, end_line: 2 },
-      { text: "a\nb\nc" }
-    );
-    expect(result.new_text).toBe("a\nc");
-  });
-
-  it("mutates via delete_span", () => {
-    const result = executeTool(
-      "delete_span",
-      { line: 1, start_column: 2, end_column: 4 },
-      { text: "hello" }
-    );
-    expect(result.new_text).toBe("ho");
-  });
-
-  it("maps legacy delete_range to delete_lines", () => {
-    const result = executeTool(
-      "delete_range",
-      { start_line: 2, end_line: 2 },
-      { text: "a\nb\nc" }
-    );
-    expect(result.new_text).toBe("a\nc");
-  });
-
-  it("maps legacy replace_range single-line calls to replace_line", () => {
-    const result = executeTool(
-      "replace_range",
-      { start_line: 1, end_line: 1, text: "done" },
-      { text: "todo" }
-    );
-    expect(result.new_text).toBe("done");
-    expect(result.line).toBe(1);
-  });
-});
-
-describe("editor_tools.joinLines", () => {
-  it("joins with newline", () => {
-    expect(joinLines(["a", "b"])).toBe("a\nb");
+  it("no longer exports the joinLines helper", () => {
+    expect(editorTools.joinLines).toBeUndefined();
   });
 });

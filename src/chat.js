@@ -937,8 +937,8 @@ function attachApplyEditsButton(bubble, assistantText) {
   btn.className = "chat-apply-edits-btn";
   btn.textContent = "Apply to document";
   btn.title = `Apply ${edits.length} edit(s) from this message to the document`;
-  btn.addEventListener("click", () => {
-    const applied = editor.applyDocumentEdits(edits);
+  btn.addEventListener("click", async () => {
+    const applied = await editor.applyDocumentEdits(edits);
     if (applied > 0) {
       btn.textContent = "Applied";
       btn.disabled = true;

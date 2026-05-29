@@ -3,9 +3,9 @@
 //
 // Editor tool schemas — from the loaded tool file in the tool editor.
 
-import { getAgentTools } from "./tool_editor.js";
+import { getAgentToolSchemas } from "./tool_editor.js";
 
 /** @returns {Array<{ type: string, function: object }>} */
 export function editorToolDefinitions() {
-  return getAgentTools();
+  return getAgentToolSchemas();
 }

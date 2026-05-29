@@ -16,6 +16,15 @@ export const defaultLmtoolsPath = join(
 
 /**
  * Load default.lmtools into the tool editor state (tests only).
+ *
+ * Parses the real default.lmtools and feeds BOTH halves into the tool editor's
+ * test setup via setLoadedToolsForTests:
+ *  - implementation: the full self-contained Tool_Implementation source
+ *    (per-tool functions + `tools` registry + `run` dispatcher). This is
+ *    registered as the implementation override so getAgentToolFunctions can
+ *    compile it and executeAgentTool can run the extracted tools by name.
+ *  - schema: the seven function tool definitions (get_document, goto_line,
+ *    insert_text, replace_line, replace_span, delete_lines, delete_span).
  * @returns {void}
  */
 export function loadDefaultToolsFixture() {
