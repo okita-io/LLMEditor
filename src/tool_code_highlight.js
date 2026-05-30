@@ -17,7 +17,6 @@ const JS_STRING = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g;
 const JS_NUMBER = /\b(0x[\da-fA-F]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g;
 
 const JSON_STRING = /("(?:[^"\\]|\\.)*")/g;
-const JSON_KEY = /("(?:[^"\\]|\\.)*")(\s*:)/g;
 const JSON_NUMBER = /\b(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g;
 const JSON_BOOL_NULL = /\b(true|false|null)\b/g;
 
@@ -33,20 +32,30 @@ function escapeHtml(text) {
 }
 
 /**
- * @param {string} text
+ * Apply a highlight regex only to text nodes, not inside existing HTML tags.
+ * Without this guard, later passes match attribute values such as `"hl-key"`
+ * inside `<span class="hl-key">`, which corrupts the markup and leaks visible
+ * fragments like `hl-key">` into the editor overlay.
+ *
+ * @param {string} html
  * @param {RegExp} pattern
  * @param {string} className
- * @param {Set<string>} [skip]
+ * @param {Set<number>} [skip]
  * @returns {string}
  */
-function highlightPattern(text, pattern, className, skip = new Set()) {
-  return text.replace(pattern, (match, ...groups) => {
-    const offset = groups[groups.length - 2];
-    if (typeof offset === "number" && skip.has(offset)) return match;
-    const idx = text.indexOf(match);
-    if (idx >= 0) skip.add(idx);
-    return `<span class="hl-${className}">${match}</span>`;
-  });
+function highlightPattern(html, pattern, className, skip = new Set()) {
+  const parts = html.split(/(<[^>]*>)/g);
+  return parts
+    .map((part) => {
+      if (part.startsWith("<")) return part;
+      return part.replace(pattern, (match, ...groups) => {
+        const offset = groups[groups.length - 2];
+        if (typeof offset === "number" && skip.has(offset)) return match;
+        if (typeof offset === "number") skip.add(offset);
+        return `<span class="hl-${className}">${match}</span>`;
+      });
+    })
+    .join("");
 }
 
 /**
@@ -70,12 +79,13 @@ export function highlightJavaScript(source) {
  */
 export function highlightJson(source) {
   let html = escapeHtml(source);
-  html = html.replace(JSON_KEY, (_m, key, colon) => {
-    return `<span class="hl-key">${key}</span>${colon}`;
-  });
-  html = highlightPattern(html, JSON_STRING, "string");
   html = highlightPattern(html, JSON_BOOL_NULL, "keyword");
   html = highlightPattern(html, JSON_NUMBER, "number");
+  html = highlightPattern(html, JSON_STRING, "string");
+  html = html.replace(
+    /<span class="hl-string">("(?:[^"\\]|\\.)*")<\/span>(\s*:)/g,
+    (_m, key, colon) => `<span class="hl-key">${key}</span>${colon}`
+  );
   return html;
 }
 
