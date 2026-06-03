@@ -1474,7 +1474,7 @@
                   "id": "toolEdPane",
                   "name": "Tool Editor Pane",
                   "width": "fill_container",
-                  "height": 320,
+                  "height": 396,
                   "fill": "$bg-primary",
                   "layout": "vertical",
                   "children": [
@@ -1803,6 +1803,61 @@
                                   "fontWeight": "normal"
                                 }
                               ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "whsjf",
+                      "name": "Tool Console",
+                      "width": "fill_container",
+                      "height": 76,
+                      "fill": "$bg-primary",
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "top": 1
+                      },
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "w8wfuL",
+                          "name": "Console Input Row",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "gap": 6,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "sdZwA",
+                              "name": "Console Prompt",
+                              "fill": "$accent",
+                              "content": ">",
+                              "lineHeight": 1.6,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "G3AvzF",
+                              "name": "Console Command Input",
+                              "fill": "$text-muted",
+                              "textGrowth": "fixed-width-height",
+                              "width": "fill_container",
+                              "height": 58,
+                              "content": "insert_text(1, \"some text\")",
+                              "lineHeight": 1.6,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
                             }
                           ]
                         }
