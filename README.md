@@ -14,7 +14,7 @@ LLIMEdit is a **tool-use sandbox**, not a full IDE:
 - **Agent loop** — multi-turn chat with native `tool_calls` against LM Studio (OpenAI-compatible API)
 - **Tool editor** — write your own tools in JavaScript with JSON schemas (`.lmtool` / `.lmtools` files)
 - **Starter document tools** — [`default.lmtools`](default.lmtools) in this repo is a ready-made set of seven text-editing tools; load it when you want the agent to read and write the buffer
-- **Starter system prompt** — [`default.prompt`](default.prompt) is a plain-text persona you can open in the inference panel when you want a sensible default assistant
+- **Starter inference profile** — [`default.prompt`](default.prompt) is a JSON file with the full inference panel (system prompt, temperature, max tokens, sampling, structured output, and more) you can open from the inference panel
 
 The app ships with **no tools loaded** and **no prompt file open**. Until you load a tool file, the LLM sees an empty tool list and the agent cannot call anything. That keeps your sandbox isolated until you choose what to expose.
 
@@ -84,11 +84,11 @@ Point **Settings → API URL** at your LM Studio server (default `http://localho
 
 You can read and edit `default.lmtools` like any other tool file — it is not bundled into the app. Save a copy under another name if you want to experiment without changing the original.
 
-### Load the starter system prompt
+### Load the starter inference profile
 
 1. In the inference panel (between chat and the document), find the **Prompt file** bar above the system prompt textarea.
 2. Click **Open** and choose [`default.prompt`](default.prompt) from this repo.
-3. The textarea fills with the starter instructions; tweak them if you like, then **Save** or **Save as…** to write a copy.
+3. The panel loads every field from the JSON file (system prompt, temperature, max tokens, penalties, structured output, and more). Edit in the UI or in the file, then **Save** or **Save as…** to write a copy.
 
 Like `default.lmtools`, `default.prompt` is not bundled — you open it from the repo when you want it.
 
@@ -168,9 +168,9 @@ Save your own tools from the tool editor bar (**Load** / **Save** / **Save as…
 
 ## System prompt
 
-The **system prompt** lives in the inference panel textarea. Use **Open** / **Save** / **Save as…** on the **Prompt file** bar to work with `.prompt` files (plain text). Your text is also persisted in app settings when you edit the textarea.
+The **system prompt** and the rest of the inference controls live in the inference panel. Use **Open** / **Save** / **Save as…** on the **Prompt file** bar to work with `.prompt` files (JSON, `format_version: 1`). Values are also persisted in app settings when you edit the panel.
 
-[`default.prompt`](default.prompt) is the repo starter — a general LLIMEdit writing-assistant persona. Open it from the inference panel when you are learning the app; fork it under another name to experiment.
+[`default.prompt`](default.prompt) is the repo starter — a writing-assistant persona plus default sampling settings. Open it from the inference panel when you are learning the app; fork it under another name to experiment. You can edit the JSON by hand: when `structured_output_enabled` is `false`, keep `structured_output` as `""`.
 
 Whatever you type is prepended (when non-empty) to a built-in block in [`src/agent.js`](src/agent.js) (`DEFAULT_TOOL_SYSTEM`) that explains line numbers, `>>` selection markers, and that edits must go through tool calls.
 
@@ -182,16 +182,9 @@ Tips:
 
 ### `default.prompt` (starter, not bundled)
 
-```text
-You are LLIMEdit, a helpful writing assistant.
+JSON with `format_version: 1` and snake_case keys matching the inference panel: `system_prompt`, `temperature`, `seed`, `limit_response_length`, `max_tokens`, `context_overflow_policy` (`truncate_middle` | `rolling_window` | `stop_at_limit`), `stop_strings`, `top_k`, repeat/presence/top-p/min-p toggles and values, `structured_output_enabled`, `structured_output`, and `reasoning_enabled`.
 
-You work inside a plain-text document editor. When the user asks you to change the document,
-use the tools loaded in the tool editor — do not paste replacement text into chat as a
-substitute for tool calls.
-…
-```
-
-See [`default.prompt`](default.prompt) for the full starter text.
+See [`default.prompt`](default.prompt) for the full starter file.
 
 ---
 
@@ -200,7 +193,7 @@ See [`default.prompt`](default.prompt) for the full starter text.
 ```
 LLMEditor/
 ├── default.lmtools          # Starter document tools (load via tool editor)
-├── default.prompt           # Starter system prompt (open via inference panel)
+├── default.prompt           # Starter inference JSON (open via inference panel)
 ├── src/
 │   ├── tool_editor.js       # .lmtool editor + tool execution
 │   ├── tool_code_highlight.js

@@ -17,6 +17,16 @@ let suppressSave = false;
 const PRESET_NAME_MAX_CHARS = 128;
 const PROMPT_FILE_EXT = ".prompt";
 
+/** @type {1} */
+const PROMPT_FILE_FORMAT_VERSION = 1;
+
+/** @type {ReadonlySet<string>} */
+const CONTEXT_OVERFLOW_POLICIES = new Set([
+  "truncate_middle",
+  "rolling_window",
+  "stop_at_limit",
+]);
+
 /** @type {string} */
 let loadedPresetName = "";
 
@@ -137,6 +147,150 @@ function readInferenceValues() {
     structured_output: inputValue("inference-structured-output"),
     reasoning_enabled: Boolean($("inference-reasoning-enabled")?.checked),
   };
+}
+
+/**
+ * Coerce a loaded `.prompt` JSON object into panel-ready inference values.
+ *
+ * @param {Record<string, unknown>} data
+ * @returns {Record<string, unknown>}
+ */
+function normalizePromptFileSettings(data) {
+  const out = { ...INFERENCE_DEFAULTS };
+
+  if (typeof data.system_prompt === "string") {
+    out.system_prompt = data.system_prompt;
+  }
+  if (typeof data.temperature === "number" && Number.isFinite(data.temperature)) {
+    out.temperature = data.temperature;
+  }
+  if (typeof data.seed === "number" && Number.isFinite(data.seed)) {
+    out.seed = Math.max(0, Math.trunc(data.seed));
+  }
+  if (typeof data.limit_response_length === "boolean") {
+    out.limit_response_length = data.limit_response_length;
+  }
+  if (typeof data.max_tokens === "number" && Number.isFinite(data.max_tokens)) {
+    out.max_tokens = Math.max(1, Math.trunc(data.max_tokens));
+  }
+  if (
+    typeof data.context_overflow_policy === "string" &&
+    CONTEXT_OVERFLOW_POLICIES.has(data.context_overflow_policy)
+  ) {
+    out.context_overflow_policy = data.context_overflow_policy;
+  }
+  if (typeof data.stop_strings === "string") {
+    out.stop_strings = data.stop_strings;
+  }
+  if (typeof data.top_k === "number" && Number.isFinite(data.top_k)) {
+    out.top_k = Math.max(0, Math.trunc(data.top_k));
+  }
+  if (typeof data.repeat_penalty_enabled === "boolean") {
+    out.repeat_penalty_enabled = data.repeat_penalty_enabled;
+  }
+  if (typeof data.repeat_penalty === "number" && Number.isFinite(data.repeat_penalty)) {
+    out.repeat_penalty = data.repeat_penalty;
+  }
+  if (typeof data.presence_penalty_enabled === "boolean") {
+    out.presence_penalty_enabled = data.presence_penalty_enabled;
+  }
+  if (typeof data.presence_penalty === "number" && Number.isFinite(data.presence_penalty)) {
+    out.presence_penalty = data.presence_penalty;
+  }
+  if (typeof data.top_p_enabled === "boolean") {
+    out.top_p_enabled = data.top_p_enabled;
+  }
+  if (typeof data.top_p === "number" && Number.isFinite(data.top_p)) {
+    out.top_p = data.top_p;
+  }
+  if (typeof data.min_p_enabled === "boolean") {
+    out.min_p_enabled = data.min_p_enabled;
+  }
+  if (typeof data.min_p === "number" && Number.isFinite(data.min_p)) {
+    out.min_p = data.min_p;
+  }
+  if (typeof data.structured_output_enabled === "boolean") {
+    out.structured_output_enabled = data.structured_output_enabled;
+  }
+  if (typeof data.structured_output === "string") {
+    out.structured_output = data.structured_output;
+  }
+  if (typeof data.reasoning_enabled === "boolean") {
+    out.reasoning_enabled = data.reasoning_enabled;
+  }
+
+  if (!out.structured_output_enabled) {
+    out.structured_output = "";
+  }
+
+  return out;
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ format: "json", settings: Record<string, unknown> } | { format: "legacy_text", system_prompt: string }}
+ */
+export function parsePromptFileContents(raw) {
+  const text = typeof raw === "string" ? raw : "";
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) {
+    return { format: "legacy_text", system_prompt: text };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { format: "legacy_text", system_prompt: text };
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { format: "legacy_text", system_prompt: text };
+  }
+
+  const data = /** @type {Record<string, unknown>} */ (parsed);
+  const looksLikePromptFile =
+    data.format_version === PROMPT_FILE_FORMAT_VERSION ||
+    "temperature" in data ||
+    "max_tokens" in data ||
+    "limit_response_length" in data;
+
+  if (!looksLikePromptFile) {
+    return { format: "legacy_text", system_prompt: text };
+  }
+
+  return { format: "json", settings: normalizePromptFileSettings(data) };
+}
+
+/**
+ * @param {Record<string, unknown>} values
+ * @returns {string}
+ */
+export function serializePromptFileContents(values) {
+  const merged = normalizePromptFileSettings({ ...INFERENCE_DEFAULTS, ...values });
+  const payload = {
+    format_version: PROMPT_FILE_FORMAT_VERSION,
+    system_prompt: merged.system_prompt,
+    temperature: merged.temperature,
+    seed: merged.seed,
+    limit_response_length: merged.limit_response_length,
+    max_tokens: merged.max_tokens,
+    context_overflow_policy: merged.context_overflow_policy,
+    stop_strings: merged.stop_strings,
+    top_k: merged.top_k,
+    repeat_penalty_enabled: merged.repeat_penalty_enabled,
+    repeat_penalty: merged.repeat_penalty,
+    presence_penalty_enabled: merged.presence_penalty_enabled,
+    presence_penalty: merged.presence_penalty,
+    top_p_enabled: merged.top_p_enabled,
+    top_p: merged.top_p,
+    min_p_enabled: merged.min_p_enabled,
+    min_p: merged.min_p,
+    structured_output_enabled: merged.structured_output_enabled,
+    structured_output: merged.structured_output,
+    reasoning_enabled: merged.reasoning_enabled,
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 /**
@@ -725,8 +879,13 @@ async function invokePromptSaveDialog() {
  */
 async function loadPromptFile(path) {
   const contents = await api.openFile(path);
+  const parsed = parsePromptFileContents(contents);
   suppressSave = true;
-  setValue("inference-system-prompt", contents);
+  if (parsed.format === "json") {
+    applySettingsToPanel(parsed.settings);
+  } else {
+    setValue("inference-system-prompt", parsed.system_prompt);
+  }
   suppressSave = false;
   currentPromptPath = path;
   clearPromptFileDirty();
@@ -741,7 +900,7 @@ async function loadPromptFile(path) {
  */
 async function savePromptFileToPath(path) {
   const normalized = ensurePromptExtension(path);
-  const contents = inputValue("inference-system-prompt");
+  const contents = serializePromptFileContents(readInferenceValues());
   await api.saveFile(normalized, contents);
   currentPromptPath = normalized;
   clearPromptFileDirty();
@@ -995,6 +1154,9 @@ async function persistInferenceSettings() {
 function scheduleSave() {
   syncDependentFields();
   if (suppressSave) return;
+  if (typeof currentPromptPath === "string" && currentPromptPath.length > 0) {
+    markPromptFileDirty();
+  }
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
@@ -1083,10 +1245,7 @@ function buildPanelDom() {
   systemPrompt.rows = 8;
   systemPrompt.placeholder = "Optional system instructions…";
   systemPrompt.spellcheck = false;
-  systemPrompt.addEventListener("input", () => {
-    markPromptFileDirty();
-    scheduleSave();
-  });
+  systemPrompt.addEventListener("input", scheduleSave);
   scroll.appendChild(systemPrompt);
 
   scroll.appendChild(
@@ -1348,6 +1507,10 @@ export const _internal = {
   onPromptDelete,
   loadPromptFile,
   savePromptFileToPath,
+  parsePromptFileContents,
+  serializePromptFileContents,
+  normalizePromptFileSettings,
+  PROMPT_FILE_FORMAT_VERSION,
   getCurrentPromptPath: () => currentPromptPath,
   isPromptFileDirty: () => promptFileDirty,
   setPromptDialogOverrides(overrides = {}) {
