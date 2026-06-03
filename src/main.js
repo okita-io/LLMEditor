@@ -92,6 +92,7 @@ import { attachEditorChrome } from "./editor_chrome.js";
 import * as chat from "./chat.js";
 import * as inferencePanel from "./inference_panel.js";
 import { initToolEditor, getToolFileStatus } from "./tool_editor.js";
+import { initToolConsole, setToolConsoleRuntime } from "./tool_console.js";
 import { initPanelResize } from "./panel_resize.js";
 
 // Re-export `settingsModal` so future code paths (and any debugging hook
@@ -567,6 +568,18 @@ export async function bootstrap() {
   chat.initializeChat();
   await inferencePanel.initializeInferencePanel();
   initToolEditor();
+  setToolConsoleRuntime({
+    getContext: () => editor.getToolConsoleContext(),
+    applyResult: (name, result) => editor.applyToolConsoleResult(name, result),
+  });
+  initToolConsole();
+  if (!document.getElementById("tool-console-input")) {
+    console.error(
+      "[LLIMEdit] #tool-console is missing from the loaded page. " +
+        "You are likely running a stale build — use `npm run dev` (not an old .app) " +
+        "and confirm index.html contains llimedit-shell-rev: tool-console-1."
+    );
+  }
   initPanelResize();
   document.addEventListener("tool-file-changed", () => {
     renderStatus();

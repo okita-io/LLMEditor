@@ -1145,6 +1145,44 @@ export async function applyDocumentEditsFromAssistantText(assistantText) {
 }
 
 /**
+ * Context object passed to tools invoked from the Tool Console.
+ *
+ * @returns {{ text: string, path: string | null, refreshWindow: typeof refreshContextWindow } | null}
+ */
+export function getToolConsoleContext() {
+  if (!bufferEl) return null;
+  return {
+    text: bufferEl.value,
+    path: currentPath,
+    refreshWindow: refreshContextWindow,
+  };
+}
+
+/**
+ * Apply a Tool Console result to the live buffer (no agent undo grouping).
+ *
+ * @param {string} name
+ * @param {Record<string, unknown>} result
+ * @returns {void}
+ */
+export function applyToolConsoleResult(name, result) {
+  if (!bufferEl || !result) return;
+  if (name === "goto_line") {
+    editorTools.applyGotoLine(bufferEl, result);
+    return;
+  }
+  if (result.ok === true && typeof result.new_text === "string") {
+    editorTools.applyMutatingResult(bufferEl, result);
+    bufferEl.dispatchEvent(new Event("input"));
+    _scrollToToolResult(bufferEl, name, result);
+    return;
+  }
+  if (result.ok === true) {
+    _scrollToToolResult(bufferEl, name, result);
+  }
+}
+
+/**
  * Commit the agent undo group when tool edits were applied.
  *
  * @returns {void}

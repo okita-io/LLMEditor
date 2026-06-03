@@ -10,8 +10,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- llimedit-shell-rev: tool-console-1 (search DevTools for this string) -->
     <title>LLIMEdit - Untitled</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=2" />
   </head>
   <body style="background-color: #1e1e1e; color: #d4d4d4; margin: 0">
     <header class="app-header">
@@ -171,39 +172,58 @@
 
           <div id="tool-split-row" class="tool-split-row">
             <div id="tool-impl-pane" class="tool-sub-pane">
-            <div class="tool-pane-header">
-              <span class="tool-pane-label">Implementation (JS)</span>
+              <div class="tool-pane-header">
+                <span class="tool-pane-label">Implementation (JS)</span>
+              </div>
+              <textarea
+                id="tool-impl-editor"
+                class="tool-code-editor"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                placeholder="// async function run(args, ctx) {&#10;//   return { ok: true, result: args.input };&#10;// }"
+              ></textarea>
             </div>
-            <textarea
-              id="tool-impl-editor"
-              class="tool-code-editor"
-              spellcheck="false"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              placeholder="// async function run(args, ctx) {&#10;//   return { ok: true, result: args.input };&#10;// }"
-            ></textarea>
+
+            <div
+              id="tool-schema-divider"
+              class="split-divider"
+              aria-hidden="true"
+              style="cursor: col-resize"
+            ></div>
+
+            <div id="tool-schema-pane" class="tool-sub-pane">
+              <div class="tool-pane-header">
+                <span class="tool-pane-label">Schema (JSON)</span>
+                <span id="tool-schema-status" class="tool-schema-status" data-state="idle"></span>
+              </div>
+              <textarea
+                id="tool-schema-editor"
+                class="tool-code-editor"
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                placeholder='{&#10;  "type": "function",&#10;  "function": {&#10;    "name": "my_tool",&#10;    "description": "What this tool does.",&#10;    "parameters": {&#10;      "type": "object",&#10;      "properties": {&#10;        "input": { "type": "string" }&#10;      },&#10;      "required": ["input"]&#10;    }&#10;  }&#10;}'
+              ></textarea>
+            </div>
           </div>
 
-          <!-- Vertical resize handle between the two tool sub-panes -->
-          <div id="tool-schema-divider" class="split-divider" aria-hidden="true" style="cursor:col-resize;"></div>
-
-          <!-- Right: JSON schema editor -->
-          <div id="tool-schema-pane" class="tool-sub-pane">
-            <div class="tool-pane-header">
-              <span class="tool-pane-label">Schema (JSON)</span>
-              <span id="tool-schema-status" class="tool-schema-status" data-state="idle"></span>
+          <!-- Tool Console (design: whsjf) -->
+          <div id="tool-console" class="tool-console" aria-label="Tool console">
+            <div id="tool-console-output" class="tool-console-output" aria-live="polite"></div>
+            <div class="tool-console-input-row">
+              <span class="tool-console-prompt" aria-hidden="true">&gt;</span>
+              <input
+                id="tool-console-input"
+                class="tool-console-input"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder='insert_text({"line":1,"text":"some text"})'
+              />
             </div>
-            <textarea
-              id="tool-schema-editor"
-              class="tool-code-editor"
-              spellcheck="false"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              placeholder='{&#10;  "type": "function",&#10;  "function": {&#10;    "name": "my_tool",&#10;    "description": "What this tool does.",&#10;    "parameters": {&#10;      "type": "object",&#10;      "properties": {&#10;        "input": { "type": "string" }&#10;      },&#10;      "required": ["input"]&#10;    }&#10;  }&#10;}'
-            ></textarea>
-          </div>
           </div>
         </div>
       </main>

@@ -950,7 +950,8 @@ button.chat-cap-icon:disabled {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  /* designs/LLIMEdit-design.pen — Document Editor column width */
+  min-width: 568px;
   min-height: 0;
   background: var(--bg-primary);
 }
@@ -1351,22 +1352,131 @@ button.chat-cap-icon:disabled {
 /* flex-basis is left as the CSS default (auto) so JS can set an explicit    */
 /* height after the first drag without fighting a hardcoded flex-basis.       */
 #tool-editor-pane {
-  flex: 0 0 auto;
-  height: 200px;
-  display: flex;
-  flex-direction: column;
-  min-height: 120px;
+  /* Shrink when #document-editor is shorter than file bar + editors + console. */
+  flex: 0 1 auto;
+  /* designs/LLIMEdit-design.pen — toolEdPane height: 400 */
+  height: 400px;
+  max-height: 100%;
+  /* File bar | impl/schema (flex) | console (fixed 76px). */
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 76px;
+  min-height: 400px;
   min-width: 0;
   overflow: hidden;
 }
 
+#tool-editor-pane > .tool-file-bar {
+  grid-row: 1;
+  min-height: 0;
+}
+
 #tool-split-row {
-  flex: 1 1 auto;
+  grid-row: 2;
   display: flex;
   flex-direction: row;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  z-index: 1;
+}
+
+#tool-console {
+  grid-row: 3;
+}
+
+.tool-console {
+  /* designs/LLIMEdit-design.pen — Tool Console height: 76 */
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 76px;
+  min-height: 76px;
+  max-height: 76px;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  isolation: isolate;
+}
+
+.tool-console-output {
+  grid-row: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 10px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: auto;
+}
+
+.tool-console-output:empty {
+  display: none;
+  padding: 0;
+  min-height: 0;
+}
+
+.tool-console-line-command {
+  color: var(--accent);
+}
+
+.tool-console-line-error {
+  color: var(--warning);
+}
+
+.tool-console-line-ok {
+  color: var(--text-muted);
+}
+
+.tool-console-input-row {
+  grid-row: 2;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  min-height: 44px;
+  box-sizing: border-box;
+  cursor: text;
+  pointer-events: auto;
+}
+
+.tool-console-prompt {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--accent);
+}
+
+.tool-console-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  pointer-events: auto;
+  cursor: text;
+}
+
+.tool-console-input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tool-console-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 
 .tool-file-bar {
@@ -1413,14 +1523,15 @@ button.chat-cap-icon:disabled {
 
 .tool-file-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   align-items: center;
+  overflow: hidden;
 }
 
 .tool-file-btn {
-  height: 32px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-sm);
   font-family: var(--font-ui);

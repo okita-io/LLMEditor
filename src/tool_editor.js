@@ -11,6 +11,11 @@ import { notifyRefresh as notifyEditorDisplayRefresh } from "./editor_display.js
 import { showConfirmModal } from "./inference_panel.js";
 import { attachCodeHighlight } from "./tool_code_highlight.js";
 import { attachTextareaEditHistory } from "./textarea_edit_history.js";
+import {
+  DESIGN_TOOL_CONSOLE_HEIGHT_PX,
+  DESIGN_TOOL_EDITOR_PANE_HEIGHT_PX,
+  MIN_TOOL_EDITOR_PANE_HEIGHT_PX,
+} from "./tool_layout.js";
 
 /** @type {HTMLTextAreaElement | null} */
 let schemaEditorEl = null;
@@ -629,7 +634,48 @@ export { executeAgentTool as executeCustomTool };
 
 // ─── Resize handles ───────────────────────────────────────────────────────────
 
+const MIN_DOC_BUFFER_PANE_HEIGHT_PX = 80;
+
+/**
+ * Size the tool editor so the console row stays inside the visible pane.
+ * The tool pane prefers 396px (design) but shrinks with the document column
+ * instead of clipping the bottom console.
+ *
+ * @returns {void}
+ */
+export function ensureToolEditorLayout() {
+  if (!docBufferPaneEl || !toolEditorPaneEl) return;
+  const container = docBufferPaneEl.parentElement;
+  if (!container) return;
+
+  const dividerH = toolPaneDividerEl?.offsetHeight ?? 4;
+  const containerH = container.clientHeight;
+  const maxToolH = Math.max(
+    DESIGN_TOOL_CONSOLE_HEIGHT_PX + 60,
+    containerH - MIN_DOC_BUFFER_PANE_HEIGHT_PX - dividerH
+  );
+  const desired = Math.min(DESIGN_TOOL_EDITOR_PANE_HEIGHT_PX, maxToolH);
+  const styleH = toolEditorPaneEl.style.height;
+  let toolH = desired;
+  if (styleH && styleH.endsWith("px")) {
+    const parsed = Number.parseFloat(styleH);
+    if (Number.isFinite(parsed)) {
+      toolH = parsed > maxToolH ? desired : Math.min(parsed, desired);
+    }
+  }
+
+  toolEditorPaneEl.style.flex = "none";
+  toolEditorPaneEl.style.height = `${toolH}px`;
+  toolEditorPaneEl.style.maxHeight = `${maxToolH}px`;
+  toolEditorPaneEl.style.minHeight = `${Math.min(MIN_TOOL_EDITOR_PANE_HEIGHT_PX, maxToolH)}px`;
+
+  docBufferPaneEl.style.flex = "1 1 auto";
+  docBufferPaneEl.style.height = "";
+  docBufferPaneEl.style.minHeight = "0";
+}
+
 function notifyPaneLayoutChanged() {
+  ensureToolEditorLayout();
   refreshEditorChrome();
   notifyEditorDisplayRefresh();
   window.dispatchEvent(new Event("resize"));
@@ -647,7 +693,9 @@ function initHorizontalResize() {
     dragging = true;
     startY = e.clientY;
     startDocH = docBufferPaneEl.offsetHeight;
-    startToolH = toolEditorPaneEl ? toolEditorPaneEl.offsetHeight : 200;
+    startToolH = toolEditorPaneEl
+      ? toolEditorPaneEl.offsetHeight
+      : DESIGN_TOOL_EDITOR_PANE_HEIGHT_PX;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "row-resize";
     e.preventDefault();
@@ -660,7 +708,7 @@ function initHorizontalResize() {
     const containerH = container ? container.offsetHeight : startDocH + startToolH + 4;
     const dividerH = toolPaneDividerEl ? toolPaneDividerEl.offsetHeight : 4;
     const minDoc = 80;
-    const minTool = 120;
+    const minTool = MIN_TOOL_EDITOR_PANE_HEIGHT_PX;
     let newDocH = startDocH + delta;
     newDocH = Math.max(minDoc, newDocH);
     newDocH = Math.min(newDocH, containerH - minTool - dividerH);
@@ -823,11 +871,13 @@ export function initToolEditor() {
 
   initHorizontalResize();
   initVerticalResize();
+  ensureToolEditorLayout();
+  requestAnimationFrame(() => ensureToolEditorLayout());
 
-  if (typeof ResizeObserver !== "undefined" && toolEditorPaneEl) {
+  const container = docBufferPaneEl?.parentElement;
+  if (typeof ResizeObserver !== "undefined" && container) {
     const ro = new ResizeObserver(() => notifyPaneLayoutChanged());
-    ro.observe(toolEditorPaneEl);
-    if (docBufferPaneEl) ro.observe(docBufferPaneEl);
+    ro.observe(container);
   }
 }
 
@@ -840,6 +890,7 @@ export const _internal = {
   onToolSave,
   onToolSaveAs,
   onToolDelete,
+  ensureToolEditorLayout,
   revalidateSchema,
   getCurrentToolPath: () => currentToolPath,
   isToolDirty: () => toolDirty,

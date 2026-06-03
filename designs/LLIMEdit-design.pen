@@ -452,6 +452,33 @@
                               "fontWeight": "normal"
                             }
                           ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "qPZ7D",
+                          "height": 32,
+                          "fill": "$danger",
+                          "cornerRadius": "$radius-sm",
+                          "stroke": "#f48771",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "padding": [
+                            0,
+                            14
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "nm7PQ",
+                              "fill": "$text-primary",
+                              "content": "Stop",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -581,7 +608,7 @@
                       "clip": true,
                       "width": "fill_container",
                       "height": "fill_container",
-                      "justifyContent": "space_around",
+                      "gap": 8,
                       "alignItems": "center",
                       "children": [
                         {
@@ -667,7 +694,7 @@
                           "id": "swhDk",
                           "name": "Delete",
                           "height": 32,
-                          "fill": "$bg-secondary",
+                          "fill": "$danger",
                           "cornerRadius": "$radius-sm",
                           "padding": [
                             0,
@@ -1473,6 +1500,7 @@
                   "type": "frame",
                   "id": "toolEdPane",
                   "name": "Tool Editor Pane",
+                  "reusable": true,
                   "width": "fill_container",
                   "height": 396,
                   "fill": "$bg-primary",

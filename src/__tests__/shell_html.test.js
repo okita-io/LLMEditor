@@ -28,12 +28,24 @@ beforeEach(() => {
 describe("index.html shell", () => {
   it("links styles.css and exposes the main layout regions", () => {
     const html = readFileSync(join(srcDir, "index.html"), "utf8");
-    expect(html).toContain('href="styles.css"');
+    expect(html).toMatch(/href="styles\.css/);
     expect(html).toContain('id="menu-bar"');
     expect(html).toContain('id="buffer"');
     expect(html).toContain('id="status-bar"');
     expect(html).toContain('id="chat-panel"');
     expect(html).toContain('id="document-editor"');
+    expect(html).toContain('id="tool-console"');
+    expect(html).toContain('id="tool-console-input"');
+    expect(html).toContain("llimedit-shell-rev: tool-console-1");
+  });
+
+  it("keeps #tool-console inside #tool-editor-pane", () => {
+    loadShellDocument();
+    const pane = document.getElementById("tool-editor-pane");
+    const consoleEl = document.getElementById("tool-console");
+    expect(pane).not.toBeNull();
+    expect(consoleEl).not.toBeNull();
+    expect(pane.contains(consoleEl)).toBe(true);
   });
 
   it("renders with dark theme background when styles.css is applied", () => {

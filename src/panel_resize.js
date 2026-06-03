@@ -5,7 +5,9 @@
 
 const MIN_CHAT_W = 260;
 const MIN_INFERENCE_W = 300;
-const MIN_DOCUMENT_W = 200;
+import { DESIGN_DOCUMENT_EDITOR_WIDTH_PX } from "./tool_layout.js";
+
+const MIN_DOCUMENT_W = DESIGN_DOCUMENT_EDITOR_WIDTH_PX;
 
 /**
  * @param {HTMLElement} divider
