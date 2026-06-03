@@ -54,6 +54,8 @@ vi.mock("../editor.js", () => {
     undo: vi.fn(),
     redo: vi.fn(),
     isStreamActive: vi.fn(() => false),
+    isLlmRequestActive: vi.fn(() => false),
+    stopActiveRequest: vi.fn(),
   };
 });
 
@@ -404,22 +406,22 @@ describe("Escape key", () => {
     expect(api.cancelStream).not.toHaveBeenCalled();
   });
 
-  it("cancels the stream when one is active and modal is closed (Req 13.7)", async () => {
+  it("stops the active LLM request when one is in flight (Req 13.7)", async () => {
     settingsModal.isModalOpen.mockReturnValue(false);
-    editor.isStreamActive.mockReturnValue(true);
-    
+    editor.isLlmRequestActive.mockReturnValue(true);
+
     menu.buildMenuBar();
 
     const e = pressKey("Escape");
 
     expect(e.defaultPrevented).toBe(true);
-    expect(api.cancelStream).toHaveBeenCalledTimes(1);
+    expect(editor.stopActiveRequest).toHaveBeenCalledTimes(1);
     expect(settingsModal.close).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when neither modal is open nor stream is active (Req 3.8)", async () => {
+  it("is a no-op when neither modal is open nor an LLM request is active (Req 3.8)", async () => {
     settingsModal.isModalOpen.mockReturnValue(false);
-    editor.isStreamActive.mockReturnValue(false);
+    editor.isLlmRequestActive.mockReturnValue(false);
     
     menu.buildMenuBar();
 
@@ -430,9 +432,9 @@ describe("Escape key", () => {
     expect(settingsModal.close).not.toHaveBeenCalled();
   });
 
-  it("modal-close takes precedence over stream-cancel when both apply", async () => {
+  it("modal-close takes precedence over stop when both apply", async () => {
     settingsModal.isModalOpen.mockReturnValue(true);
-    editor.isStreamActive.mockReturnValue(true);
+    editor.isLlmRequestActive.mockReturnValue(true);
     
     menu.buildMenuBar();
 

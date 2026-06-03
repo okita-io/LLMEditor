@@ -281,7 +281,7 @@ async function run(args, ctx) {
 
 // ---- schema ----
 [
-    {
+  {
     "type": "function",
     "function": {
       "name": "test_function",

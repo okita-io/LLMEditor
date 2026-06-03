@@ -57,7 +57,11 @@
 //                 18.6, 18.15, 18.16, 18.17, 18.18, 18.19, 18.20.
 
 import * as api from "./api.js";
-import { runAgent } from "./agent.js";
+import {
+  isAgentCancelledError,
+  isLlmCancelledError,
+  runAgent,
+} from "./agent.js";
 import { getHistoryForAgent, recordExchange } from "./chat_history.js";
 import { buildContextWindow, refreshContextWindow } from "./context_window.js";
 import { getSelectionForContext } from "./editor_chrome.js";
@@ -75,6 +79,7 @@ let hadBom = false;
 let lineEnding = "none";
 let streamActive = false;
 let agentActive = false;
+let agentCancelRequested = false;
 /** @type {null | { source: string, beforeSelection: object, afterSelection: object, changes: Array<object>, lastAppendedAt: number }} */
 let agentEditGroup = null;
 /** @type {string} */
@@ -293,6 +298,34 @@ export function isDirty() {
  */
 export function isStreamActive() {
   return streamActive;
+}
+
+/**
+ * @returns {boolean}
+ */
+export function isAgentActive() {
+  return agentActive;
+}
+
+/**
+ * @returns {boolean}
+ */
+export function isLlmRequestActive() {
+  return streamActive || agentActive;
+}
+
+/**
+ * Stop the active document stream or chat agent request (Stop button / Escape).
+ *
+ * @returns {void}
+ */
+export function stopActiveRequest() {
+  if (streamActive || agentActive) {
+    agentCancelRequested = true;
+    Promise.resolve(api.cancelStream()).catch((err) => {
+      console.error("cancelStream failed:", err);
+    });
+  }
 }
 
 /**
@@ -944,6 +977,8 @@ async function _sendAgentPrompt(text, options = {}) {
   }
 
   agentActive = true;
+  agentCancelRequested = false;
+  _emitLlmRequestUi();
   _beginAgentEdit();
   if (retry) {
     _emitChatRetry(text, settings.model);
@@ -967,6 +1002,7 @@ async function _sendAgentPrompt(text, options = {}) {
       contextAnchor,
       documentPath: currentPath,
       priorTurns: getHistoryForAgent(),
+      shouldAbort: () => agentCancelRequested,
       callbacks: {
         getDocumentContext: () => ({
           text: bufferEl.value,
@@ -1009,13 +1045,20 @@ async function _sendAgentPrompt(text, options = {}) {
     recordExchange(text, finalText);
     _emitStatus("");
   } catch (err) {
+    if (agentCancelRequested || isAgentCancelledError(err) || isLlmCancelledError(err)) {
+      _emitStatus("Stopped");
+      _emitChatComplete({ success: true, stopped: true, text });
+      return;
+    }
     errorMessage = _errorMessage(err);
     _emitStatus(errorMessage);
   } finally {
     _completeAgentEdit();
     agentActive = false;
-    _emitChatComplete({ success, text, error: errorMessage || undefined });
+    agentCancelRequested = false;
+    _emitLlmRequestUi();
   }
+  _emitChatComplete({ success, text, error: errorMessage || undefined });
 }
 
 /**
@@ -1789,6 +1832,7 @@ export function _beginStream(mode) {
     },
   };
   streamActive = true;
+  _emitLlmRequestUi();
 }
 
 /**
@@ -1801,6 +1845,7 @@ export function _beginStream(mode) {
 export function _endStream() {
   streamAnchor = null;
   streamActive = false;
+  _emitLlmRequestUi();
 }
 
 /**
@@ -1830,6 +1875,7 @@ export function _completeStream() {
   const anchor = streamAnchor;
   if (anchor === null) {
     streamActive = false;
+    _emitLlmRequestUi();
     return;
   }
   if (anchor.group.changes.length >= 1 && bufferEl) {
@@ -1851,6 +1897,28 @@ export function _completeStream() {
   }
   streamAnchor = null;
   streamActive = false;
+  _emitLlmRequestUi();
+}
+
+/**
+ * @returns {void}
+ */
+function _emitLlmRequestUi() {
+  if (typeof document === "undefined" || typeof CustomEvent !== "function") {
+    return;
+  }
+  try {
+    document.dispatchEvent(
+      new CustomEvent("editor:llm-request-ui", {
+        detail: {
+          chatBusy: agentActive,
+          stopEnabled: streamActive || agentActive,
+        },
+      })
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 /* ------------------------------------------------------------------ */

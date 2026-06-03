@@ -169,6 +169,8 @@ pub enum LlmError {
     /// `Response::status() != 200`. The Display includes the decimal status,
     /// e.g. `"HTTP 503"`. Req 14.3.
     HttpStatus(u16),
+    /// User cancelled via Stop / Escape while a turn was in flight.
+    Cancelled,
 }
 
 impl fmt::Display for LlmError {
@@ -179,6 +181,7 @@ impl fmt::Display for LlmError {
             LlmError::ConnectionLost => f.write_str("connection lost"),
             LlmError::InvalidResponse => f.write_str("invalid response"),
             LlmError::HttpStatus(code) => write!(f, "HTTP {code}"),
+            LlmError::Cancelled => f.write_str(""),
         }
     }
 }

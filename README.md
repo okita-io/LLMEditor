@@ -14,9 +14,9 @@ LLIMEdit is a **tool-use sandbox**, not a full IDE:
 - **Agent loop** — multi-turn chat with native `tool_calls` against LM Studio (OpenAI-compatible API)
 - **Tool editor** — write your own tools in JavaScript with JSON schemas (`.lmtool` / `.lmtools` files)
 - **Starter document tools** — [`default.lmtools`](default.lmtools) in this repo is a ready-made set of seven text-editing tools; load it when you want the agent to read and write the buffer
-- **Starter inference profile** — [`default.prompt`](default.prompt) is a JSON file with the full inference panel (system prompt, temperature, max tokens, sampling, structured output, and more) you can open from the inference panel
+- **Starter inference profile** — [`default.prompt`](default.prompt) is a JSON reference with the full inference panel (system prompt, temperature, max tokens, sampling, structured output, and more); copy fields into the panel or save them as a named preset
 
-The app ships with **no tools loaded** and **no prompt file open**. Until you load a tool file, the LLM sees an empty tool list and the agent cannot call anything. That keeps your sandbox isolated until you choose what to expose.
+The app ships with **no tools loaded** and default inference settings until you configure the panel. Until you load a tool file, the LLM sees an empty tool list and the agent cannot call anything. That keeps your sandbox isolated until you choose what to expose.
 
 The main text buffer stays unstyled; **syntax highlighting** is enabled in the tool **Implementation (JS)** and **Schema (JSON)** panes only.
 
@@ -86,11 +86,10 @@ You can read and edit `default.lmtools` like any other tool file — it is not b
 
 ### Load the starter inference profile
 
-1. In the inference panel (between chat and the document), find the **Prompt file** bar above the system prompt textarea.
-2. Click **Open** and choose [`default.prompt`](default.prompt) from this repo.
-3. The panel loads every field from the JSON file (system prompt, temperature, max tokens, penalties, structured output, and more). Edit in the UI or in the file, then **Save** or **Save as…** to write a copy.
+1. In the inference panel (between chat and the document), edit the system prompt and sampling fields, or use **Load** / **Save** / **Save as…** on the preset row to store named profiles in app settings.
+2. To match the repo starter, copy values from [`default.prompt`](default.prompt) into the panel (or recreate them as a preset named e.g. `The Surgical Editor`).
 
-Like `default.lmtools`, `default.prompt` is not bundled — you open it from the repo when you want it.
+Like `default.lmtools`, `default.prompt` is not bundled — it is a reference file in the repo you can mirror by hand or in your own `.prompt` JSON exports.
 
 ### Tests
 
@@ -168,9 +167,9 @@ Save your own tools from the tool editor bar (**Load** / **Save** / **Save as…
 
 ## System prompt
 
-The **system prompt** and the rest of the inference controls live in the inference panel. Use **Open** / **Save** / **Save as…** on the **Prompt file** bar to work with `.prompt` files (JSON, `format_version: 1`). Values are also persisted in app settings when you edit the panel.
+The **system prompt** and the rest of the inference controls live in the inference panel. Edits auto-save to app settings; use the preset row (**Load** / **Save** / **Save as…** / **Delete**) for named snapshots. External `.prompt` files use the same JSON shape (`format_version: 1`) if you maintain them outside the app.
 
-[`default.prompt`](default.prompt) is the repo starter — a writing-assistant persona plus default sampling settings. Open it from the inference panel when you are learning the app; fork it under another name to experiment. You can edit the JSON by hand: when `structured_output_enabled` is `false`, keep `structured_output` as `""`.
+[`default.prompt`](default.prompt) is the repo starter — a writing-assistant persona plus default sampling settings. Mirror it into the panel or a preset when you are learning the app. You can edit the JSON by hand: when `structured_output_enabled` is `false`, keep `structured_output` as `""`.
 
 Whatever you type is prepended (when non-empty) to a built-in block in [`src/agent.js`](src/agent.js) (`DEFAULT_TOOL_SYSTEM`) that explains line numbers, `>>` selection markers, and that edits must go through tool calls.
 
@@ -193,7 +192,7 @@ See [`default.prompt`](default.prompt) for the full starter file.
 ```
 LLMEditor/
 ├── default.lmtools          # Starter document tools (load via tool editor)
-├── default.prompt           # Starter inference JSON (open via inference panel)
+├── default.prompt           # Starter inference JSON (reference / hand import)
 ├── src/
 │   ├── tool_editor.js       # .lmtool editor + tool execution
 │   ├── tool_code_highlight.js

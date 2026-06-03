@@ -201,6 +201,32 @@ function parseAgentTurnEnvelope(envelope) {
   return { content, tool_calls, finish_reason, reasoning };
 }
 
+/** User stopped the agent loop (Stop button / Escape). */
+export class AgentCancelledError extends Error {
+  constructor() {
+    super("stopped");
+    this.name = "AgentCancelledError";
+  }
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isAgentCancelledError(err) {
+  return err instanceof AgentCancelledError;
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isLlmCancelledError(err) {
+  if (isAgentCancelledError(err)) return true;
+  const msg = err && typeof err === "object" && "message" in err ? err.message : err;
+  return typeof msg === "string" && msg.length === 0;
+}
+
 export async function runAgent(options) {
   const { userMessage, settings, bufferEl, callbacks, documentPath = null } = options;
   const getContext = callbacks.getDocumentContext;
@@ -246,7 +272,14 @@ export async function runAgent(options) {
   let applyNudgeUsed = false;
   let thinkingNudgeUsed = false;
 
+  const shouldAbort =
+    typeof options.shouldAbort === "function" ? options.shouldAbort : () => false;
+
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    if (shouldAbort()) {
+      throw new AgentCancelledError();
+    }
+
     const turnNumber = turn + 1;
     const customTools = getAgentToolSchemas();
     const requestBody = buildAgentRequestPreview(settings, messages, customTools);
@@ -258,7 +291,19 @@ export async function runAgent(options) {
     });
     callbacks.onReasoningStreamStart?.({ turn: turnNumber });
 
-    const response = await api.agentTurn(messages, settings, customTools);
+    let response;
+    try {
+      response = await api.agentTurn(messages, settings, customTools);
+    } catch (err) {
+      if (isLlmCancelledError(err)) {
+        throw new AgentCancelledError();
+      }
+      throw err;
+    }
+
+    if (shouldAbort()) {
+      throw new AgentCancelledError();
+    }
 
     callbacks.onReasoningStreamEnd?.({
       turn: turnNumber,
@@ -286,6 +331,9 @@ export async function runAgent(options) {
       }
 
       for (const toolCall of response.tool_calls) {
+        if (shouldAbort()) {
+          throw new AgentCancelledError();
+        }
         const ctx = getContext();
         // eslint-disable-next-line no-await-in-loop
         const snap = await executeAgentTool("get_document", {}, {

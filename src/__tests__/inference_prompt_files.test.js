@@ -11,7 +11,6 @@ vi.mock("../api.js", () => ({
   saveSettings: vi.fn(),
   openFile: vi.fn(),
   saveFile: vi.fn(),
-  deleteFile: vi.fn(),
 }));
 
 import * as api from "../api.js";
@@ -42,7 +41,7 @@ function setupDom() {
   document.body.innerHTML = '<aside id="inference-panel"></aside>';
 }
 
-describe("inference prompt files", () => {
+describe("inference panel layout", () => {
   beforeEach(() => {
     _internal.resetForTests();
     setupDom();
@@ -50,10 +49,9 @@ describe("inference prompt files", () => {
     api.saveSettings.mockResolvedValue(undefined);
     api.openFile.mockReset();
     api.saveFile.mockReset();
-    api.deleteFile.mockReset();
     _internal.setPromptDialogOverrides({
       open: async () => "/tmp/starter.prompt",
-      save: async () => "/tmp/new.prompt",
+      save: async () => "/tmp/export.prompt",
     });
   });
 
@@ -63,92 +61,73 @@ describe("inference prompt files", () => {
     vi.clearAllMocks();
   });
 
-  it("builds Open, Save, and Save as controls above the system prompt", async () => {
+  it("builds Open, Load, Save, Save as, Export, and Delete preset controls", async () => {
     await initializeInferencePanel();
 
-    expect(document.getElementById("inference-prompt-open")).not.toBeNull();
-    expect(document.getElementById("inference-prompt-save")).not.toBeNull();
-    expect(document.getElementById("inference-prompt-save-as")).not.toBeNull();
+    expect(document.getElementById("inference-preset-open")).not.toBeNull();
+    expect(document.getElementById("inference-preset-load")).not.toBeNull();
+    expect(document.getElementById("inference-preset-save")).not.toBeNull();
+    expect(document.getElementById("inference-preset-save-as")).not.toBeNull();
+    expect(document.getElementById("inference-preset-export")).not.toBeNull();
+    expect(document.getElementById("inference-preset-delete")).not.toBeNull();
     expect(document.getElementById("inference-system-prompt")).not.toBeNull();
   });
 
-  it("opens a JSON .prompt file into the full inference panel", async () => {
+  it("parses default.prompt JSON for full inference settings", () => {
+    const starter = readFileSync(defaultPromptPath, "utf8");
+    const parsed = parsePromptFileContents(starter);
+    expect(parsed).not.toBeNull();
+    expect(parsed.settings.system_prompt).toBeTruthy();
+    expect(typeof parsed.settings.temperature).toBe("number");
+    expect(typeof parsed.settings.max_tokens).toBe("number");
+  });
+
+  it("rejects legacy plain-text prompt files", () => {
+    expect(parsePromptFileContents("Legacy plain prompt.")).toBeNull();
+  });
+
+  it("Open imports a file into the panel and adds a named preset", async () => {
     const starter = readFileSync(defaultPromptPath, "utf8");
     vi.mocked(api.openFile).mockResolvedValue(starter);
 
     await initializeInferencePanel();
-    await _internal.onPromptOpen();
+    await _internal.onPresetOpen();
 
     const expected = parsePromptFileContents(starter).settings;
-    expect(api.openFile).toHaveBeenCalledWith("/tmp/starter.prompt");
+    expect(document.getElementById("inference-preset-select").value).toBe("starter");
+    expect(document.getElementById("inference-preset-name").value).toBe("starter");
     expect(document.getElementById("inference-system-prompt").value).toBe(expected.system_prompt);
-    expect(Number(document.getElementById("inference-temperature").value)).toBe(
-      expected.temperature
-    );
-    expect(Number(document.getElementById("inference-max-tokens").value)).toBe(
-      expected.max_tokens
-    );
-    expect(document.getElementById("inference-structured-output").value).toBe("");
-    expect(_internal.getCurrentPromptPath()).toBe("/tmp/starter.prompt");
     expect(api.saveSettings).toHaveBeenCalled();
+    const payload = api.saveSettings.mock.calls.at(-1)[0];
+    expect(payload.inference_presets.starter).toBeDefined();
+    expect(payload.active_inference_preset).toBe("starter");
   });
 
-  it("opens legacy plain-text .prompt files into the system prompt only", async () => {
-    vi.mocked(api.openFile).mockResolvedValue("Legacy plain prompt.");
-
+  it("Export writes JSON from the panel to disk", async () => {
     await initializeInferencePanel();
-    document.getElementById("inference-temperature").value = "0.9";
-    await _internal.loadPromptFile("/tmp/legacy.prompt");
-
-    expect(document.getElementById("inference-system-prompt").value).toBe("Legacy plain prompt.");
-    expect(document.getElementById("inference-temperature").value).toBe("0.9");
-  });
-
-  it("save as writes JSON with inference fields and empty structured_output when disabled", async () => {
-    await initializeInferencePanel();
-    document.getElementById("inference-system-prompt").value = "Custom prompt text.";
-    document.getElementById("inference-temperature").value = "0.4";
-    document.getElementById("inference-structured-output-enabled").checked = false;
-    document.getElementById("inference-structured-output").value = "should be cleared";
+    document.getElementById("inference-system-prompt").value = "Export me.";
+    document.getElementById("inference-temperature").value = "0.55";
 
     vi.mocked(api.openFile).mockImplementation(async (path) => {
-      if (path === "/tmp/new.prompt") return "existing";
+      if (path === "/tmp/export.prompt") return "existing";
       throw new Error("missing");
     });
 
-    const savePromise = _internal.onPromptSaveAs();
+    const exportPromise = _internal.onPresetExport();
     await vi.waitFor(() => {
       const modal = document.getElementById("inference-confirm-modal");
       expect(modal).not.toBeNull();
       expect(modal.hidden).toBe(false);
     });
     document.getElementById("inference-confirm-modal").querySelector('[data-action="confirm"]').click();
-    await savePromise;
+    await exportPromise;
 
     const saved = vi.mocked(api.saveFile).mock.calls[0][1];
     const parsed = JSON.parse(saved);
-    expect(parsed.format_version).toBe(1);
-    expect(parsed.system_prompt).toBe("Custom prompt text.");
-    expect(parsed.temperature).toBe(0.4);
-    expect(parsed.structured_output_enabled).toBe(false);
-    expect(parsed.structured_output).toBe("");
+    expect(parsed.system_prompt).toBe("Export me.");
+    expect(parsed.temperature).toBe(0.55);
     expect(serializePromptFileContents(_internal.readInferenceValues())).toBe(saved);
-    expect(api.saveFile).toHaveBeenCalledWith("/tmp/new.prompt", saved);
-    expect(_internal.getCurrentPromptPath()).toBe("/tmp/new.prompt");
-  });
-
-  it("delete clears the prompt and path after confirmation", async () => {
-    vi.mocked(api.openFile).mockResolvedValue(readFileSync(defaultPromptPath, "utf8"));
-    await initializeInferencePanel();
-    await _internal.loadPromptFile("/tmp/starter.prompt");
-
-    const deletePromise = _internal.onPromptDelete();
-    await Promise.resolve();
-    document.getElementById("inference-confirm-modal").querySelector('[data-action="confirm"]').click();
-    await deletePromise;
-
-    expect(api.deleteFile).toHaveBeenCalledWith("/tmp/starter.prompt");
-    expect(document.getElementById("inference-system-prompt").value).toBe("");
-    expect(_internal.getCurrentPromptPath()).toBeNull();
+    expect(api.saveFile).toHaveBeenCalledWith("/tmp/export.prompt", saved);
+    expect(api.saveSettings).not.toHaveBeenCalled();
   });
 });

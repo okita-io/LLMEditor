@@ -613,6 +613,32 @@
                       "children": [
                         {
                           "type": "frame",
+                          "id": "iw1pN",
+                          "name": "open button",
+                          "height": 32,
+                          "fill": "$accent",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            0,
+                            14
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Drc0v",
+                              "name": "title",
+                              "fill": "#ffffff",
+                              "content": "Open",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
                           "id": "o3lWv",
                           "name": "load button",
                           "height": 32,
@@ -640,7 +666,7 @@
                         {
                           "type": "frame",
                           "id": "HdUrB",
-                          "name": "Save",
+                          "name": "Save button",
                           "height": 32,
                           "fill": "$accent",
                           "cornerRadius": "$radius-sm",
@@ -666,7 +692,7 @@
                         {
                           "type": "frame",
                           "id": "FNzKy",
-                          "name": "Save As...",
+                          "name": "Save As... button",
                           "height": 32,
                           "fill": "$accent",
                           "cornerRadius": "$radius-sm",
@@ -683,6 +709,32 @@
                               "name": "title",
                               "fill": "#ffffff",
                               "content": "Save as...",
+                              "fontFamily": "$font-ui",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Lfa97",
+                          "name": "Export button",
+                          "height": 32,
+                          "fill": "$accent",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            0,
+                            14
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "q768tM",
+                              "name": "title",
+                              "fill": "#ffffff",
+                              "content": "Export",
                               "fontFamily": "$font-ui",
                               "fontSize": 12,
                               "fontWeight": "600"
@@ -1592,7 +1644,7 @@
                                   "type": "text",
                                   "id": "toolLoadTxt",
                                   "fill": "#ffffff",
-                                  "content": "Load",
+                                  "content": "Open",
                                   "fontFamily": "$font-ui",
                                   "fontSize": 12,
                                   "fontWeight": "600"

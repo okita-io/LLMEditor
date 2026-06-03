@@ -12,6 +12,7 @@ import { stringifyRequestBody } from "./agent_request_preview.js";
 let messagesEl = null;
 let inputEl = null;
 let sendBtn = null;
+let stopBtn = null;
 let clearBtn = null;
 /** @type {HTMLSelectElement | null} */
 let modelPickerEl = null;
@@ -365,13 +366,29 @@ async function retryUserMessage(bubble) {
  * @param {boolean} streaming
  * @returns {void}
  */
-function setStreamingUi(streaming) {
-  if (inputEl) inputEl.disabled = streaming;
-  if (sendBtn) sendBtn.disabled = streaming;
+/**
+ * @param {{ chatBusy?: boolean, stopEnabled?: boolean }} state
+ * @returns {void}
+ */
+function applyLlmRequestUi(state) {
+  const chatBusy = Boolean(state?.chatBusy);
+  const stopEnabled = Boolean(state?.stopEnabled);
+  if (inputEl) inputEl.disabled = chatBusy;
+  if (sendBtn) sendBtn.disabled = chatBusy;
+  if (clearBtn) clearBtn.disabled = chatBusy;
+  if (stopBtn) stopBtn.disabled = !stopEnabled;
   if (modelPickerEl) {
-    modelPickerEl.disabled = streaming;
-    modelPickerEl.classList.toggle("streaming", streaming);
+    modelPickerEl.disabled = chatBusy;
+    modelPickerEl.classList.toggle("streaming", chatBusy);
   }
+}
+
+/**
+ * @param {boolean} streaming
+ * @returns {void}
+ */
+function setStreamingUi(streaming) {
+  applyLlmRequestUi({ chatBusy: streaming, stopEnabled: streaming });
 }
 
 /**
@@ -1031,6 +1048,7 @@ export function initializeChat() {
   messagesEl = document.getElementById("chat-messages");
   inputEl = document.getElementById("chat-input");
   sendBtn = document.getElementById("chat-send");
+  stopBtn = document.getElementById("chat-stop");
   clearBtn = document.getElementById("chat-clear");
   modelPickerEl = document.getElementById("chat-model-picker");
   tokenCountEl = document.getElementById("chat-token-count");
@@ -1077,6 +1095,13 @@ export function initializeChat() {
     });
   }
 
+  if (stopBtn && !stopBtn.dataset.chatBound) {
+    stopBtn.dataset.chatBound = "1";
+    stopBtn.addEventListener("click", () => {
+      editor.stopActiveRequest();
+    });
+  }
+
   if (clearBtn && !clearBtn.dataset.chatBound) {
     clearBtn.dataset.chatBound = "1";
     clearBtn.addEventListener("click", () => {
@@ -1088,6 +1113,13 @@ export function initializeChat() {
   chatListenersAttached = true;
 
   if (typeof document !== "undefined") {
+    document.addEventListener("editor:llm-request-ui", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      applyLlmRequestUi(
+        detail && typeof detail === "object" ? /** @type {object} */ (detail) : {}
+      );
+    });
     document.addEventListener("settings:model-changed", () => {
       void refreshCapabilityIcons(modelPickerEl?.value ?? "");
     });

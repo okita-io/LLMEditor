@@ -307,15 +307,20 @@ pub async fn call_llm(text: String, settings: Settings) -> Result<String, String
 #[tauri::command]
 pub async fn agent_turn(
     app: tauri::AppHandle,
+    state: State<'_, AppState>,
     messages: Vec<serde_json::Value>,
     settings: Settings,
     custom_tools: Option<Vec<serde_json::Value>>,
 ) -> Result<llm_client::AgentTurnResponse, String> {
+    let cancel = state
+        .stream
+        .try_acquire()
+        .map_err(|e| e.to_string())?;
     let raw = custom_tools.unwrap_or_default();
     let parsed = crate::editor_tools::parse_custom_tool_definitions(&raw)?;
-    llm_client::agent_turn(&app, messages, &settings, &parsed)
-        .await
-        .map_err(<LlmError as Into<String>>::into)
+    let result = llm_client::agent_turn(&app, messages, &settings, &parsed, cancel).await;
+    state.stream.release();
+    result.map_err(<LlmError as Into<String>>::into)
 }
 
 // -----------------------------------------------------------------------------

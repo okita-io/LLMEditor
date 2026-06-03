@@ -86,30 +86,45 @@ describe("inference presets", () => {
     expect(payload.active_inference_preset).toBe("The Surgical Editor");
   });
 
-  it("shows overwrite confirmation when saving an existing preset name", async () => {
+  it("Save updates the selected dropdown preset without a confirmation dialog", async () => {
+    await initializeInferencePanel();
+
+    document.getElementById("inference-preset-select").value = "The Surgical Editor";
+    document.getElementById("inference-temperature").value = "0.7";
+
+    await _internal.onPresetSave();
+
+    expect(document.getElementById("inference-confirm-modal")).toBeNull();
+    expect(api.saveSettings).toHaveBeenCalled();
+    const payload = api.saveSettings.mock.calls.at(-1)[0];
+    expect(payload.inference_presets["The Surgical Editor"].temperature).toBe(0.7);
+  });
+
+  it("Save as prompts before overwriting an existing preset name", async () => {
     await initializeInferencePanel();
 
     document.getElementById("inference-preset-name").value = "The Surgical Editor";
-    document.getElementById("inference-temperature").value = "0.7";
+    document.getElementById("inference-temperature").value = "0.8";
 
-    const savePromise = _internal.onPresetSave();
+    const saveAsPromise = _internal.onPresetSaveAs();
     await Promise.resolve();
     expect(api.saveSettings).not.toHaveBeenCalled();
 
     const modal = document.getElementById("inference-confirm-modal");
     expect(modal.hidden).toBe(false);
     modal.querySelector('[data-action="confirm"]').click();
-    await savePromise;
+    await saveAsPromise;
 
-    expect(api.saveSettings).toHaveBeenCalled();
     const payload = api.saveSettings.mock.calls.at(-1)[0];
-    expect(payload.inference_presets["The Surgical Editor"].temperature).toBe(0.7);
+    expect(payload.inference_presets["The Surgical Editor"].temperature).toBe(0.8);
   });
 
-  it("deletes a preset after confirmation", async () => {
+  it("deletes a preset but leaves the panel values until Load", async () => {
     await initializeInferencePanel();
 
     document.getElementById("inference-preset-select").value = "The Surgical Editor";
+    document.getElementById("inference-temperature").value = "0.9";
+    document.getElementById("inference-system-prompt").value = "Still visible.";
 
     const deletePromise = _internal.onPresetDelete();
     await Promise.resolve();
@@ -118,9 +133,13 @@ describe("inference presets", () => {
     modal.querySelector('[data-action="confirm"]').click();
     await deletePromise;
 
+    expect(document.getElementById("inference-temperature").value).toBe("0.9");
+    expect(document.getElementById("inference-system-prompt").value).toBe("Still visible.");
     const payload = api.saveSettings.mock.calls.at(-1)[0];
     expect(payload.inference_presets["The Surgical Editor"]).toBeUndefined();
     expect(payload.active_inference_preset).toBe("");
+    expect(payload.temperature).toBe(0.9);
+    expect(payload.system_prompt).toBe("Still visible.");
   });
 
   it("sorts preset names alphabetically", () => {

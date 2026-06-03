@@ -589,10 +589,16 @@ pub async fn agent_turn(
     messages: Vec<Value>,
     settings: &Settings,
     custom_tools: &[Value],
+    cancel: CancellationToken,
 ) -> Result<AgentTurnResponse, LlmError> {
-    match agent_turn_streaming(app, messages.clone(), settings, custom_tools).await {
+    match agent_turn_streaming(app, messages.clone(), settings, custom_tools, cancel.clone()).await
+    {
         Ok(response) => Ok(response),
+        Err(LlmError::Cancelled) => Err(LlmError::Cancelled),
         Err(LlmError::HttpStatus(_)) | Err(LlmError::InvalidResponse) => {
+            if cancel.is_cancelled() {
+                return Err(LlmError::Cancelled);
+            }
             agent_turn_blocking(messages, settings, custom_tools).await
         }
         Err(err) => Err(err),
@@ -604,6 +610,7 @@ async fn agent_turn_streaming(
     messages: Vec<Value>,
     settings: &Settings,
     custom_tools: &[Value],
+    cancel: CancellationToken,
 ) -> Result<AgentTurnResponse, LlmError> {
     use futures_util::StreamExt;
 
@@ -630,29 +637,46 @@ async fn agent_turn_streaming(
     let mut buffer: Vec<u8> = Vec::new();
     let mut acc = agent_stream::AgentStreamAccumulator::new();
 
-    while let Some(chunk) = byte_stream.next().await {
-        let bytes = chunk.map_err(|_| LlmError::ConnectionLost)?;
-        buffer.extend_from_slice(&bytes);
+    loop {
+        tokio::select! {
+            biased;
 
-        while let Some(idx) = agent_stream::find_double_newline(&buffer) {
-            let record = std::str::from_utf8(&buffer[..idx])
-                .map_err(|_| LlmError::InvalidResponse)?
-                .to_string();
-            buffer.drain(..idx + 2);
+            _ = cancel.cancelled() => {
+                return Err(LlmError::Cancelled);
+            }
 
-            if let Some(payload) = agent_stream::extract_data_payload(&record) {
-                if payload == "[DONE]" {
-                    return Ok(acc.into_response());
-                }
+            chunk = byte_stream.next() => {
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                let bytes = chunk.map_err(|_| LlmError::ConnectionLost)?;
+                buffer.extend_from_slice(&bytes);
 
-                let events = agent_stream::push_chunk(&mut acc, payload)
-                    .map_err(|_| LlmError::InvalidResponse)?;
-                for event in events {
-                    let agent_stream::AgentStreamEvent::ReasoningToken(fragment) = event;
-                    let _ = emit_llm_reasoning_token(app, &fragment);
+                while let Some(idx) = agent_stream::find_double_newline(&buffer) {
+                    let record = std::str::from_utf8(&buffer[..idx])
+                        .map_err(|_| LlmError::InvalidResponse)?
+                        .to_string();
+                    buffer.drain(..idx + 2);
+
+                    if let Some(payload) = agent_stream::extract_data_payload(&record) {
+                        if payload == "[DONE]" {
+                            return Ok(acc.into_response());
+                        }
+
+                        let events = agent_stream::push_chunk(&mut acc, payload)
+                            .map_err(|_| LlmError::InvalidResponse)?;
+                        for event in events {
+                            let agent_stream::AgentStreamEvent::ReasoningToken(fragment) = event;
+                            let _ = emit_llm_reasoning_token(app, &fragment);
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if cancel.is_cancelled() {
+        return Err(LlmError::Cancelled);
     }
 
     if !buffer.is_empty() {

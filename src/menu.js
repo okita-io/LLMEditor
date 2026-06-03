@@ -493,11 +493,9 @@ function handleEscape(e) {
     settingsModal.close();
     return;
   }
-  if (editor.isStreamActive()) {
+  if (editor.isLlmRequestActive()) {
     e.preventDefault();
-    Promise.resolve(api.cancelStream()).catch((err) => {
-      console.error("cancelStream failed:", err);
-    });
+    editor.stopActiveRequest();
     return;
   }
   // Req 3.8: no stream, no modal — no-op.

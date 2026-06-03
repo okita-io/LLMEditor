@@ -13,7 +13,7 @@
 //   - Error propagation from api.agentTurn
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { runAgent, _internal } from "../agent.js";
+import { AgentCancelledError, runAgent, _internal } from "../agent.js";
 import * as api from "../api.js";
 import { loadDefaultToolsFixture } from "./setup/default_lmtools_fixture.js";
 
@@ -235,6 +235,47 @@ describe("runAgent — direct text response (no tools)", () => {
     expect(onAssistantMessage).toHaveBeenCalledWith("Here is my answer.");
     // First call gets thinking nudge, second call terminates
     expect(api.agentTurn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("runAgent — user stop", () => {
+  it("throws AgentCancelledError when shouldAbort is true before a turn", async () => {
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "doc";
+
+    await expect(
+      runAgent({
+        userMessage: "edit",
+        settings: { system_prompt: "" },
+        bufferEl,
+        contextAnchor: null,
+        shouldAbort: () => true,
+        callbacks: {
+          getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+        },
+      })
+    ).rejects.toBeInstanceOf(AgentCancelledError);
+
+    expect(api.agentTurn).not.toHaveBeenCalled();
+  });
+
+  it("maps an empty-string cancel rejection from agentTurn to AgentCancelledError", async () => {
+    vi.mocked(api.agentTurn).mockRejectedValue(new Error(""));
+
+    const bufferEl = document.createElement("textarea");
+    bufferEl.value = "doc";
+
+    await expect(
+      runAgent({
+        userMessage: "edit",
+        settings: { system_prompt: "" },
+        bufferEl,
+        contextAnchor: null,
+        callbacks: {
+          getDocumentContext: () => ({ text: bufferEl.value, path: null }),
+        },
+      })
+    ).rejects.toBeInstanceOf(AgentCancelledError);
   });
 });
 
