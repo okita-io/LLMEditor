@@ -1,5 +1,5 @@
 {
-  "version": "2.11",
+  "version": "2.13",
   "children": [
     {
       "type": "frame",
@@ -19,13 +19,11 @@
           "width": "fill_container",
           "height": 32,
           "fill": "$bg-secondary",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "justifyContent": "space_between",
           "alignItems": "center",
           "children": [
@@ -36,13 +34,11 @@
               "width": "fill_container",
               "height": 32,
               "fill": "$bg-secondary",
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "bottom": 1
-                },
-                "fill": "$border"
+              "stroke": "$border",
+              "strokeWidth": {
+                "bottom": 1
               },
+              "strokeAlignment": "inner",
               "gap": 24,
               "padding": [
                 0,
@@ -100,12 +96,12 @@
               "alignItems": "center",
               "children": [
                 {
-                  "type": "icon_font",
+                  "type": "icon",
                   "id": "eRMtZ",
                   "width": 16,
                   "height": 16,
-                  "iconFontName": "settings",
-                  "iconFontFamily": "lucide",
+                  "icon": "settings",
+                  "library": "lucide",
                   "fill": "$text-muted"
                 }
               ]
@@ -119,11 +115,9 @@
           "width": "fill_container",
           "height": "fill_container",
           "fill": "$bg-primary",
-          "stroke": {
-            "align": "inside",
-            "thickness": "$radius-sm",
-            "fill": "#000000ff"
-          },
+          "stroke": "#000000ff",
+          "strokeWidth": "$radius-sm",
+          "strokeAlignment": "inner",
           "children": [
             {
               "type": "frame",
@@ -152,11 +146,9 @@
                       "width": "fill_container",
                       "fill": "$input-bg",
                       "cornerRadius": "$radius-sm",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 4,
                       "padding": 12,
@@ -191,11 +183,9 @@
                       "width": "fill_container",
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-sm",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$accent"
-                      },
+                      "stroke": "$accent",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 4,
                       "padding": 12,
@@ -233,13 +223,11 @@
                   "width": "fill_container",
                   "height": 214,
                   "fill": "$bg-secondary",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "top": 1
-                    },
-                    "fill": "$border"
+                  "stroke": "$border",
+                  "strokeWidth": {
+                    "top": 1
                   },
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "gap": 8,
                   "padding": 12,
@@ -252,11 +240,9 @@
                       "height": 143,
                       "fill": "$input-bg",
                       "cornerRadius": "$radius-sm",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "padding": 10,
                       "justifyContent": "end",
@@ -306,11 +292,9 @@
                               "height": 32,
                               "fill": "$bg-secondary",
                               "cornerRadius": "$radius-sm",
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": 1,
-                                "fill": "$border"
-                              },
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "gap": 6,
                               "padding": [
                                 0,
@@ -333,45 +317,45 @@
                                   "fontWeight": "normal"
                                 },
                                 {
-                                  "type": "icon_font",
+                                  "type": "icon",
                                   "id": "v9dVPt",
                                   "name": "chevron",
                                   "width": 14,
                                   "height": 14,
-                                  "iconFontName": "chevron-down",
-                                  "iconFontFamily": "lucide",
+                                  "icon": "chevron-down",
+                                  "library": "lucide",
                                   "fill": "$text-muted"
                                 }
                               ]
                             },
                             {
-                              "type": "icon_font",
+                              "type": "icon",
                               "id": "RMJRa",
                               "name": "vision",
                               "width": 14,
                               "height": 14,
-                              "iconFontName": "eye",
-                              "iconFontFamily": "lucide",
+                              "icon": "eye",
+                              "library": "lucide",
                               "fill": "$success"
                             },
                             {
-                              "type": "icon_font",
+                              "type": "icon",
                               "id": "DEVeS",
                               "name": "tool use",
                               "width": 14,
                               "height": 14,
-                              "iconFontName": "hammer",
-                              "iconFontFamily": "lucide",
+                              "icon": "hammer",
+                              "library": "lucide",
                               "fill": "$success"
                             },
                             {
-                              "type": "icon_font",
+                              "type": "icon",
                               "id": "RKLcH",
                               "name": "reasoning",
                               "width": 14,
                               "height": 14,
-                              "iconFontName": "graduation-cap",
-                              "iconFontFamily": "lucide",
+                              "icon": "graduation-cap",
+                              "library": "lucide",
                               "fill": "$success"
                             },
                             {
@@ -421,14 +405,12 @@
                           "fill": "#00000000",
                           "cornerRadius": "$radius-sm",
                           "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": {
-                              "type": "color",
-                              "color": "$border",
-                              "enabled": false
-                            }
+                            "type": "color",
+                            "color": "$border",
+                            "enabled": false
                           },
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "justifyContent": "space_between",
                           "alignItems": "center",
                           "children": [
@@ -438,11 +420,9 @@
                               "height": 32,
                               "fill": "#00000000",
                               "cornerRadius": "$radius-sm",
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": 1,
-                                "fill": "$border"
-                              },
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
                               "padding": [
                                 0,
                                 14
@@ -516,10 +496,6 @@
                   "width": "fill_container",
                   "height": "fill_container",
                   "cornerRadius": "$radius-md",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1
-                  },
                   "layout": "vertical",
                   "gap": 24,
                   "padding": 8,
@@ -532,11 +508,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         0,
                         7
@@ -564,11 +538,9 @@
                       "height": 32,
                       "fill": "$bg-secondary",
                       "cornerRadius": "$radius-sm",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "gap": 6,
                       "padding": [
                         0,
@@ -591,13 +563,13 @@
                           "fontWeight": "normal"
                         },
                         {
-                          "type": "icon_font",
+                          "type": "icon",
                           "id": "UhC17",
                           "name": "chevron",
                           "width": 14,
                           "height": 14,
-                          "iconFontName": "chevron-down",
-                          "iconFontFamily": "lucide",
+                          "icon": "chevron-down",
+                          "library": "lucide",
                           "fill": "$text-muted"
                         }
                       ]
@@ -726,14 +698,12 @@
                   "name": "System Prompt",
                   "clip": true,
                   "width": "fill_container",
-                  "height": 200,
+                  "height": 226,
                   "fill": "$bg-primary",
                   "cornerRadius": "$radius-md",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "$border"
-                  },
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": 8,
                   "children": [
                     {
@@ -777,11 +747,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "justifyContent": "center",
                       "alignItems": "center",
                       "children": [
@@ -852,11 +820,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "justifyContent": "center",
                       "alignItems": "center",
                       "children": [
@@ -898,11 +864,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         0,
                         8
@@ -920,12 +884,12 @@
                           "fontWeight": "normal"
                         },
                         {
-                          "type": "icon_font",
+                          "type": "icon",
                           "id": "KU5qj",
                           "width": 14,
                           "height": 14,
-                          "iconFontName": "chevron-down",
-                          "iconFontFamily": "lucide",
+                          "icon": "chevron-down",
+                          "library": "lucide",
                           "fill": "$text-muted"
                         }
                       ]
@@ -957,11 +921,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": [
                         0,
                         8
@@ -1005,11 +967,9 @@
                       "height": 30,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "justifyContent": "center",
                       "alignItems": "center",
                       "children": [
@@ -1065,11 +1025,9 @@
                           "height": 30,
                           "fill": "$bg-primary",
                           "cornerRadius": "$radius-md",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          },
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "justifyContent": "center",
                           "alignItems": "center",
                           "children": [
@@ -1119,11 +1077,9 @@
                           "height": 16,
                           "fill": "$bg-primary",
                           "cornerRadius": 2,
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          }
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         },
                         {
                           "type": "frame",
@@ -1132,11 +1088,9 @@
                           "height": 30,
                           "fill": "$bg-primary",
                           "cornerRadius": "$radius-md",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          },
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "justifyContent": "center",
                           "alignItems": "center",
                           "children": [
@@ -1194,11 +1148,9 @@
                           "height": 30,
                           "fill": "$bg-primary",
                           "cornerRadius": "$radius-md",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          },
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "justifyContent": "center",
                           "alignItems": "center",
                           "children": [
@@ -1256,11 +1208,9 @@
                           "height": 30,
                           "fill": "$bg-primary",
                           "cornerRadius": "$radius-md",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          },
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "justifyContent": "center",
                           "alignItems": "center",
                           "children": [
@@ -1311,11 +1261,9 @@
                           "height": 16,
                           "fill": "$bg-primary",
                           "cornerRadius": 2,
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          }
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner"
                         }
                       ]
                     },
@@ -1326,11 +1274,9 @@
                       "height": 200,
                       "fill": "$bg-primary",
                       "cornerRadius": "$radius-md",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": 1,
-                        "fill": "$border"
-                      },
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
                       "padding": 8,
                       "children": [
                         {
@@ -1414,13 +1360,11 @@
                       "width": "fill_container",
                       "height": 22,
                       "fill": "$bg-secondary",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "$border"
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "padding": [
                         0,
                         16,
@@ -1456,13 +1400,11 @@
                           "width": 48,
                           "height": "fill_container",
                           "fill": "$bg-secondary",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": {
-                              "right": 1
-                            },
-                            "fill": "$border"
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "right": 1
                           },
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "padding": [
                             16,
@@ -1543,13 +1485,11 @@
                       "width": "fill_container",
                       "height": 86,
                       "fill": "$bg-secondary",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "$border"
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 8,
                       "padding": [
@@ -1565,11 +1505,9 @@
                           "height": 30,
                           "fill": "$bg-primary",
                           "cornerRadius": "$radius-md",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": 1,
-                            "fill": "$border"
-                          },
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
                           "padding": [
                             0,
                             10
@@ -1606,7 +1544,6 @@
                           "width": "fill_container",
                           "height": 32,
                           "gap": 8,
-                          "justifyContent": "start",
                           "alignItems": "center",
                           "children": [
                             {
@@ -1737,13 +1674,11 @@
                               "width": "fill_container",
                               "height": 26,
                               "fill": "$bg-secondary",
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "padding": [
                                 0,
                                 10
@@ -1812,13 +1747,11 @@
                               "width": "fill_container",
                               "height": 26,
                               "fill": "$bg-secondary",
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "padding": [
                                 0,
                                 10
@@ -1888,13 +1821,11 @@
           "width": "fill_container",
           "height": 24,
           "fill": "$bg-secondary",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "padding": [
             0,
             12
@@ -1942,11 +1873,9 @@
       "width": 480,
       "fill": "$modal-bg",
       "cornerRadius": "$radius-md",
-      "stroke": {
-        "align": "inside",
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "layout": "vertical",
       "gap": 20,
       "padding": 24,
@@ -1987,11 +1916,9 @@
               "height": 36,
               "fill": "#00000000",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 20
@@ -2047,11 +1974,9 @@
       "width": 480,
       "fill": "$modal-bg",
       "cornerRadius": "$radius-md",
-      "stroke": {
-        "align": "inside",
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "layout": "vertical",
       "gap": 20,
       "padding": 24,
@@ -2092,11 +2017,9 @@
               "height": 36,
               "fill": "#00000000",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 20
@@ -2152,11 +2075,9 @@
       "width": 480,
       "fill": "$modal-bg",
       "cornerRadius": "$radius-md",
-      "stroke": {
-        "align": "inside",
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "layout": "vertical",
       "gap": 20,
       "padding": 24,
@@ -2197,11 +2118,9 @@
               "height": 36,
               "fill": "#00000000",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 20
@@ -2257,11 +2176,9 @@
       "width": 480,
       "fill": "$modal-bg",
       "cornerRadius": "$radius-md",
-      "stroke": {
-        "align": "inside",
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "layout": "vertical",
       "gap": 20,
       "padding": 24,
@@ -2302,11 +2219,9 @@
               "height": 36,
               "fill": "#00000000",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 20
@@ -2362,11 +2277,9 @@
       "width": 480,
       "fill": "$modal-bg",
       "cornerRadius": "$radius-md",
-      "stroke": {
-        "align": "inside",
-        "thickness": 1,
-        "fill": "$border"
-      },
+      "stroke": "$border",
+      "strokeWidth": 1,
+      "strokeAlignment": "inner",
       "layout": "vertical",
       "gap": 20,
       "padding": 24,
@@ -2403,11 +2316,9 @@
               "height": 36,
               "fill": "$input-bg",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 12
@@ -2458,11 +2369,9 @@
                   "height": 36,
                   "fill": "$input-bg",
                   "cornerRadius": "$radius-sm",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "$border"
-                  },
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": [
                     0,
                     12
@@ -2486,11 +2395,9 @@
                   "height": 36,
                   "fill": "#00000000",
                   "cornerRadius": "$radius-sm",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "$border"
-                  },
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "padding": [
                     0,
                     12
@@ -2536,11 +2443,9 @@
               "height": 36,
               "fill": "$input-bg",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 12
@@ -2583,11 +2488,9 @@
               "height": 36,
               "fill": "#00000000",
               "cornerRadius": "$radius-sm",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "padding": [
                 0,
                 20

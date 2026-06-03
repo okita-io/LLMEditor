@@ -68,7 +68,7 @@ describe("tool_editor", () => {
     vi.clearAllMocks();
   });
 
-  it("round-trips implementation and schema through .lmtool JSON", () => {
+  it("round-trips implementation and schema through .lmtool split-text format", () => {
     const serialized = serializeToolFile();
     const parsed = parseToolFileContents(serialized);
     expect(parsed.implementation).toContain("async function run");
@@ -137,7 +137,7 @@ describe("tool_editor", () => {
 
     expect(api.saveFile).toHaveBeenCalledWith(
       "/tmp/new-tools.lmtool",
-      expect.stringContaining('"version": 1')
+      expect.stringContaining("// ---- schema ----")
     );
   });
 

@@ -69,6 +69,15 @@ let saveDialogOverride = null;
 const TOOL_FILE_EXT = ".lmtool";
 const TOOL_FILE_VERSION = 1;
 
+/**
+ * Separator line used by the split-text format (v2).
+ * The file is plain JS, then this comment line, then a JSON schema array.
+ * This makes the file fully editable in any text editor without JSON escaping.
+ */
+const LMTOOL_SCHEMA_SEP = "// ---- schema ----";
+/** The exact byte sequence searched when parsing the split-text format. */
+const LMTOOL_SPLIT_SEQ = `\n${LMTOOL_SCHEMA_SEP}\n`;
+
 /** @type {ReturnType<typeof attachTextareaEditHistory> | null} */
 let implEditHistory = null;
 /** @type {ReturnType<typeof attachTextareaEditHistory> | null} */
@@ -212,13 +221,48 @@ export function getToolFileStatus() {
 }
 
 // ─── Tool file format ─────────────────────────────────────────────────────────
+//
+// Two formats are supported:
+//
+//   Split-text (v2, default for new saves) — human-readable, editable in any
+//   text editor without JSON escaping. The file is two sections separated by a
+//   single comment line:
+//
+//     <JavaScript implementation — plain, unescaped>
+//     // ---- schema ----
+//     <JSON schema array — pretty-printed>
+//
+//   Legacy JSON (v1) — the original `{ version, implementation, schema }` JSON
+//   envelope. Still parsed for backward compatibility; never written on save.
 
 /**
- * @param {string} raw
+ * Parse the on-disk content of a .lmtool / .lmtools file.
+ *
+ * Detects the split-text format first (searches for the LMTOOL_SPLIT_SEQ
+ * sentinel), then falls back to the legacy JSON envelope for files saved by
+ * older versions of the tool editor.
+ *
+ * @param {string} raw  Raw file contents as read from disk.
  * @returns {{ implementation: string, schema: string }}
  */
 export function parseToolFileContents(raw) {
-  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  const str = typeof raw === "string" ? raw : "";
+
+  // ── Split-text format (v2): \n// ---- schema ----\n ────────────────────────
+  // The implementation is everything before the separator; the schema is
+  // everything after. One trailing newline (added by the serializer) is
+  // stripped from the schema string so parse→serialize→parse round-trips
+  // leave the schema string character-for-character identical.
+  const splitIdx = str.indexOf(LMTOOL_SPLIT_SEQ);
+  if (splitIdx !== -1) {
+    const implementation = str.slice(0, splitIdx);
+    let schema = str.slice(splitIdx + LMTOOL_SPLIT_SEQ.length);
+    if (schema.endsWith("\n")) schema = schema.slice(0, -1);
+    return { implementation, schema };
+  }
+
+  // ── Legacy JSON format (v1): backward compatibility ─────────────────────────
+  const trimmed = str.trim();
   if (!trimmed) {
     return { implementation: "", schema: "" };
   }
@@ -255,31 +299,32 @@ export function parseToolFileContents(raw) {
 }
 
 /**
+ * Serialize the current Implementation_Pane and Schema_Pane contents to the
+ * split-text format:
+ *
+ *   <implementation — plain JS, unescaped>\n
+ *   // ---- schema ----\n
+ *   <schema — JSON as typed in the pane>\n
+ *
+ * The schema JSON is validated before writing; an invalid schema throws so the
+ * caller can show the error rather than silently writing a corrupt file.
+ *
  * @returns {string}
  */
 export function serializeToolFile() {
   const implementation = implEditorEl ? implEditorEl.value : "";
   const schemaRaw = schemaEditorEl ? schemaEditorEl.value.trim() : "";
 
-  let schema = null;
   if (schemaRaw.length > 0) {
     try {
-      schema = JSON.parse(schemaRaw);
+      JSON.parse(schemaRaw);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`Schema must be valid JSON before saving: ${msg}`);
     }
   }
 
-  return `${JSON.stringify(
-    {
-      version: TOOL_FILE_VERSION,
-      implementation,
-      schema,
-    },
-    null,
-    2
-  )}\n`;
+  return `${implementation}\n${LMTOOL_SCHEMA_SEP}\n${schemaRaw}\n`;
 }
 
 function applyToolFileContents(contents) {

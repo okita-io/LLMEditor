@@ -17,11 +17,11 @@
 //
 // The round-trip mirrors how the editor actually serializes/parses:
 //   serializeToolFile() reads the live Implementation_Pane and Schema_Pane
-//   textareas and emits `{ version, implementation, schema }` where `schema`
-//   is the *parsed* JSON of the Schema_Pane.
+//   textareas and emits the split-text format:
+//     <implementation — plain JS>\n// ---- schema ----\n<schema JSON>\n
 //   parseToolFileContents(raw) returns `{ implementation: string, schema: string }`
-//   where `schema` is re-stringified JSON. We therefore compare the parsed
-//   JSON of `parsed.schema` against the original schema array.
+//   where `schema` is the raw JSON string from after the separator. We therefore
+//   compare JSON.parse(parsed.schema) against the original schema array.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";

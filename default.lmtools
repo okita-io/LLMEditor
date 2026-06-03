@@ -1,117 +1,455 @@
-{
-  "version": 1,
-  "implementation": "/**\n * Default document tools for LLIMEdit.\n *\n * Load this file in the tool editor (Load -> default.lmtools) to give the agent\n * read/write access to the document buffer. Each tool is a plain function that\n * receives (args, ctx) and returns a Tool_Result object. `ctx.text` holds the\n * live document buffer, `ctx.path` the current file path, `ctx.contextAnchor`\n * the sliding-window anchor (agent loop only), and `ctx.refreshWindow` a\n * function that builds the same context window shown in the user message.\n *\n * This file is self-contained: it cannot import the editor harness, so the\n * small text-geometry helpers below are its own copies.\n */\n\n// -- geometry helpers (self-contained; cannot import the harness) --\n\nfunction splitLines(value) {\n  if (typeof value !== \"string\") return [\"\"];\n  if (value.length === 0) return [\"\"];\n  return value.split(\"\\n\");\n}\n\nfunction joinLines(lines) {\n  return lines.join(\"\\n\");\n}\n\nfunction clampLine(line, totalLines) {\n  const max = Math.max(1, totalLines);\n  const n = Number.isFinite(line) ? Math.trunc(line) : 1;\n  return Math.min(Math.max(1, n), max);\n}\n\nfunction normalizeColumn(column) {\n  const n = Number.isFinite(column) ? Math.trunc(column) : 1;\n  return Math.max(1, n);\n}\n\nfunction resolveSpanColumns(lineText, startColumn, endColumn) {\n  const current = typeof lineText === \"string\" ? lineText : \"\";\n  const length = current.length;\n  let startCol = normalizeColumn(startColumn);\n  let endCol = normalizeColumn(endColumn);\n  if (startCol > endCol) [startCol, endCol] = [endCol, startCol];\n\n  const startIdx = Math.min(startCol - 1, length);\n  const endIdx = Math.min(endCol, length);\n  const effectiveStartColumn = length === 0 ? 1 : Math.min(startCol, length + 1);\n  const effectiveEndColumn = length === 0 ? 1 : Math.min(endCol, length);\n\n  return {\n    start_column: startCol,\n    end_column: endCol,\n    effective_start_column: effectiveStartColumn,\n    effective_end_column: effectiveEndColumn,\n    startIdx,\n    endIdx,\n  };\n}\n\n// -- changed-flag helper (sets `changed` against the original buffer text) --\n\nfunction withChanged(result, originalText) {\n  if (!result || result.ok !== true || typeof result.new_text !== \"string\") {\n    return { ...result, changed: false };\n  }\n  return { ...result, changed: result.new_text !== originalText };\n}\n\n// -- per-tool functions: each returns a Tool_Result --\n\nfunction get_document(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const path = typeof ctx.path === \"string\" && ctx.path.length > 0 ? ctx.path : null;\n  const anchor = ctx.contextAnchor ?? null;\n\n  if (anchor && typeof anchor === \"object\" && typeof ctx.refreshWindow === \"function\") {\n    const w = ctx.refreshWindow(text, anchor);\n    return {\n      ok: true,\n      lines: w.total_lines,\n      path,\n      content: w.numbered,\n      is_truncated: w.is_truncated,\n      window_start_line: w.window_start_line,\n      window_end_line: w.window_end_line,\n      changed: false,\n    };\n  }\n\n  const lines = splitLines(text);\n  const numbered = lines.map((line, index) => `${index + 1}| ${line}`).join(\"\\n\");\n  return {\n    ok: true,\n    lines: lines.length,\n    path,\n    content: numbered,\n    is_truncated: false,\n    window_start_line: 1,\n    window_end_line: lines.length,\n    changed: false,\n  };\n}\n\nfunction goto_line(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const line = Number(args.line ?? args.start_line ?? 1);\n  const lines = splitLines(text);\n  const ln = clampLine(line, lines.length);\n  const lineText = lines[ln - 1] ?? \"\";\n  return { ok: true, line: ln, column: 1, line_text: lineText };\n}\n\nfunction insert_text(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const lines = splitLines(text);\n  const ln = clampLine(Number(args.line ?? 1), lines.length);\n  const column = Number(args.column ?? 1);\n  const col = Number.isFinite(column) ? Math.max(1, Math.trunc(column)) : 1;\n  const insert = String(args.text ?? \"\");\n  const current = lines[ln - 1] ?? \"\";\n  const index = Math.min(col - 1, current.length);\n  lines[ln - 1] = current.slice(0, index) + insert + current.slice(index);\n  return withChanged(\n    {\n      ok: true,\n      line: ln,\n      column: index + insert.length + 1,\n      new_text: joinLines(lines),\n    },\n    text\n  );\n}\n\nfunction replace_line(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const lines = splitLines(text);\n  const ln = clampLine(Number(args.line ?? 1), lines.length);\n  const newLines = splitLines(String(args.text ?? \"\"));\n  const updated = [...lines.slice(0, ln - 1), ...newLines, ...lines.slice(ln)];\n  return withChanged(\n    {\n      ok: true,\n      line: ln,\n      end_line: ln + newLines.length - 1,\n      new_text: joinLines(updated),\n    },\n    text\n  );\n}\n\nfunction replace_span(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const lines = splitLines(text);\n  const ln = clampLine(Number(args.line ?? 1), lines.length);\n  const current = lines[ln - 1] ?? \"\";\n  const span = resolveSpanColumns(\n    current,\n    Number(args.start_column ?? 1),\n    Number(args.end_column ?? 1)\n  );\n  const insert = String(args.text ?? \"\");\n  lines[ln - 1] = current.slice(0, span.startIdx) + insert + current.slice(span.endIdx);\n  return withChanged(\n    {\n      ok: true,\n      line: ln,\n      start_column: span.start_column,\n      end_column: span.end_column,\n      effective_start_column: span.effective_start_column,\n      effective_end_column: span.effective_end_column,\n      new_text: joinLines(lines),\n    },\n    text\n  );\n}\n\nfunction delete_lines(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const lines = splitLines(text);\n  let start = clampLine(Number(args.start_line ?? 1), lines.length);\n  let end = clampLine(Number(args.end_line ?? 1), lines.length);\n  if (start > end) [start, end] = [end, start];\n  const deleted = end - start + 1;\n  const updated = [...lines.slice(0, start - 1), ...lines.slice(end)];\n  if (updated.length === 0) updated.push(\"\");\n  return withChanged(\n    {\n      ok: true,\n      start_line: start,\n      end_line: end,\n      deleted_lines: deleted,\n      new_text: joinLines(updated),\n    },\n    text\n  );\n}\n\nfunction delete_span(args, ctx) {\n  // Deleting a span is replacing it with the empty string.\n  return replace_span({ ...args, text: \"\" }, ctx);\n}\n\n// -- legacy variants (not advertised in the schema, runnable via the runtime) --\n\nfunction replace_range(args, ctx) {\n  const text = typeof ctx.text === \"string\" ? ctx.text : \"\";\n  const lines = splitLines(text);\n  const startLine = Number(args.start_line ?? 1);\n  const endLine = Number(args.end_line ?? 1);\n  const replacement = String(args.text ?? \"\");\n\n  let result;\n  if (startLine === endLine) {\n    // single-line -> replace_line semantics\n    const ln = clampLine(startLine, lines.length);\n    const newLines = splitLines(replacement);\n    const updated = [...lines.slice(0, ln - 1), ...newLines, ...lines.slice(ln)];\n    result = {\n      ok: true,\n      text: joinLines(updated),\n      line: ln,\n      end_line: ln + newLines.length - 1,\n    };\n  } else {\n    let start = clampLine(startLine, lines.length);\n    let end = clampLine(endLine, lines.length);\n    if (start > end) [start, end] = [end, start];\n    const newLines = splitLines(replacement);\n    const updated = [...lines.slice(0, start - 1), ...newLines, ...lines.slice(end)];\n    result = {\n      ok: true,\n      text: joinLines(updated),\n      start_line: start,\n      end_line: start + newLines.length - 1,\n    };\n  }\n\n  return withChanged(\n    {\n      ok: true,\n      line: \"line\" in result ? result.line : result.start_line,\n      start_line: \"start_line\" in result ? result.start_line : result.line,\n      end_line: result.end_line,\n      new_text: result.text,\n    },\n    text\n  );\n}\n\nfunction delete_range(args, ctx) {\n  // Legacy alias for delete_lines (identical Tool_Result shape).\n  return delete_lines(args, ctx);\n}\n\n// -- registry + dispatcher --\n\nconst tools = {\n  get_document,\n  goto_line,\n  insert_text,\n  replace_line,\n  replace_span,\n  delete_lines,\n  delete_span,\n  replace_range,\n  delete_range,\n};\n\nasync function run(args, ctx) {\n  const fn = tools[ctx.toolName];\n  if (typeof fn !== \"function\") {\n    return { ok: false, error: `Tool \"${ctx.toolName}\" has no implementation.`, changed: false };\n  }\n  return fn(args, ctx);\n}\n",
-  "schema": [
+/**
+ * Default document tools for LLIMEdit.
+ *
+ * Load this file in the tool editor (Load -> default.lmtools) to give the agent
+ * read/write access to the document buffer. Each tool is a plain function that
+ * receives (args, ctx) and returns a Tool_Result object. `ctx.text` holds the
+ * live document buffer, `ctx.path` the current file path, `ctx.contextAnchor`
+ * the sliding-window anchor (agent loop only), and `ctx.refreshWindow` a
+ * function that builds the same context window shown in the user message.
+ *
+ * This file is self-contained: it cannot import the editor harness, so the
+ * small text-geometry helpers below are its own copies.
+ */
+
+// -- geometry helpers (self-contained; cannot import the harness) --
+
+function splitLines(value) {
+  if (typeof value !== "string") return [""];
+  if (value.length === 0) return [""];
+  return value.split("\n");
+}
+
+function joinLines(lines) {
+  return lines.join("\n");
+}
+
+function clampLine(line, totalLines) {
+  const max = Math.max(1, totalLines);
+  const n = Number.isFinite(line) ? Math.trunc(line) : 1;
+  return Math.min(Math.max(1, n), max);
+}
+
+function normalizeColumn(column) {
+  const n = Number.isFinite(column) ? Math.trunc(column) : 1;
+  return Math.max(1, n);
+}
+
+function resolveSpanColumns(lineText, startColumn, endColumn) {
+  const current = typeof lineText === "string" ? lineText : "";
+  const length = current.length;
+  let startCol = normalizeColumn(startColumn);
+  let endCol = normalizeColumn(endColumn);
+  if (startCol > endCol) [startCol, endCol] = [endCol, startCol];
+
+  const startIdx = Math.min(startCol - 1, length);
+  const endIdx = Math.min(endCol, length);
+  const effectiveStartColumn = length === 0 ? 1 : Math.min(startCol, length + 1);
+  const effectiveEndColumn = length === 0 ? 1 : Math.min(endCol, length);
+
+  return {
+    start_column: startCol,
+    end_column: endCol,
+    effective_start_column: effectiveStartColumn,
+    effective_end_column: effectiveEndColumn,
+    startIdx,
+    endIdx,
+  };
+}
+
+// -- changed-flag helper (sets `changed` against the original buffer text) --
+
+function withChanged(result, originalText) {
+  if (!result || result.ok !== true || typeof result.new_text !== "string") {
+    return { ...result, changed: false };
+  }
+  return { ...result, changed: result.new_text !== originalText };
+}
+
+// -- per-tool functions: each returns a Tool_Result --
+
+function get_document(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const path = typeof ctx.path === "string" && ctx.path.length > 0 ? ctx.path : null;
+  const anchor = ctx.contextAnchor ?? null;
+
+  if (anchor && typeof anchor === "object" && typeof ctx.refreshWindow === "function") {
+    const w = ctx.refreshWindow(text, anchor);
+    return {
+      ok: true,
+      lines: w.total_lines,
+      path,
+      content: w.numbered,
+      is_truncated: w.is_truncated,
+      window_start_line: w.window_start_line,
+      window_end_line: w.window_end_line,
+      changed: false,
+    };
+  }
+
+  const lines = splitLines(text);
+  const numbered = lines.map((line, index) => `${index + 1}| ${line}`).join("\n");
+  return {
+    ok: true,
+    lines: lines.length,
+    path,
+    content: numbered,
+    is_truncated: false,
+    window_start_line: 1,
+    window_end_line: lines.length,
+    changed: false,
+  };
+}
+
+function goto_line(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const line = Number(args.line ?? args.start_line ?? 1);
+  const lines = splitLines(text);
+  const ln = clampLine(line, lines.length);
+  const lineText = lines[ln - 1] ?? "";
+  return { ok: true, line: ln, column: 1, line_text: lineText };
+}
+
+function insert_text(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const lines = splitLines(text);
+  const ln = clampLine(Number(args.line ?? 1), lines.length);
+  const column = Number(args.column ?? 1);
+  const col = Number.isFinite(column) ? Math.max(1, Math.trunc(column)) : 1;
+  const insert = String(args.text ?? "");
+  const current = lines[ln - 1] ?? "";
+  const index = Math.min(col - 1, current.length);
+  lines[ln - 1] = current.slice(0, index) + insert + current.slice(index);
+  return withChanged(
     {
-      "type": "function",
-      "function": {
-        "name": "get_document",
-        "description": "Return the document with 1-based line numbers. For large files this returns the same context window shown in the user message (lines before/after the selection); line numbers are absolute in the full file. Selected lines are marked with >>.",
-        "parameters": {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": false
-        }
-      }
+      ok: true,
+      line: ln,
+      column: index + insert.length + 1,
+      new_text: joinLines(lines),
     },
+    text
+  );
+}
+
+function replace_line(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const lines = splitLines(text);
+  const ln = clampLine(Number(args.line ?? 1), lines.length);
+  const newLines = splitLines(String(args.text ?? ""));
+  const updated = [...lines.slice(0, ln - 1), ...newLines, ...lines.slice(ln)];
+  return withChanged(
     {
-      "type": "function",
-      "function": {
-        "name": "goto_line",
-        "description": "Move the editor caret to the start of a line (1-based). Returns that line's text.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "line": { "type": "integer", "description": "1-based line number" }
-          },
-          "required": ["line"],
-          "additionalProperties": false
-        }
-      }
+      ok: true,
+      line: ln,
+      end_line: ln + newLines.length - 1,
+      new_text: joinLines(updated),
     },
+    text
+  );
+}
+
+function replace_span(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const lines = splitLines(text);
+  const ln = clampLine(Number(args.line ?? 1), lines.length);
+  const current = lines[ln - 1] ?? "";
+  const span = resolveSpanColumns(
+    current,
+    Number(args.start_column ?? 1),
+    Number(args.end_column ?? 1)
+  );
+  const insert = String(args.text ?? "");
+  lines[ln - 1] = current.slice(0, span.startIdx) + insert + current.slice(span.endIdx);
+  return withChanged(
     {
-      "type": "function",
-      "function": {
-        "name": "insert_text",
-        "description": "Insert text at a 1-based line and column position.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "line": { "type": "integer", "description": "1-based line number" },
-            "column": { "type": "integer", "description": "1-based column (default 1)" },
-            "text": { "type": "string", "description": "Text to insert" }
-          },
-          "required": ["line", "text"],
-          "additionalProperties": false
-        }
-      }
+      ok: true,
+      line: ln,
+      start_column: span.start_column,
+      end_column: span.end_column,
+      effective_start_column: span.effective_start_column,
+      effective_end_column: span.effective_end_column,
+      new_text: joinLines(lines),
     },
+    text
+  );
+}
+
+function delete_lines(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const lines = splitLines(text);
+  let start = clampLine(Number(args.start_line ?? 1), lines.length);
+  let end = clampLine(Number(args.end_line ?? 1), lines.length);
+  if (start > end) [start, end] = [end, start];
+  const deleted = end - start + 1;
+  const updated = [...lines.slice(0, start - 1), ...lines.slice(end)];
+  if (updated.length === 0) updated.push("");
+  return withChanged(
     {
-      "type": "function",
-      "function": {
-        "name": "replace_line",
-        "description": "Replace the entire content of a single line. text is the full new line content (not a substring). If text contains newlines, the line expands into multiple lines.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "line": { "type": "integer", "description": "1-based line number" },
-            "text": { "type": "string", "description": "Complete replacement content for the line" }
-          },
-          "required": ["line", "text"],
-          "additionalProperties": false
-        }
-      }
+      ok: true,
+      start_line: start,
+      end_line: end,
+      deleted_lines: deleted,
+      new_text: joinLines(updated),
     },
+    text
+  );
+}
+
+function delete_span(args, ctx) {
+  // Deleting a span is replacing it with the empty string.
+  return replace_span({ ...args, text: "" }, ctx);
+}
+
+// -- legacy variants (not advertised in the schema, runnable via the runtime) --
+
+function replace_range(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const lines = splitLines(text);
+  const startLine = Number(args.start_line ?? 1);
+  const endLine = Number(args.end_line ?? 1);
+  const replacement = String(args.text ?? "");
+
+  let result;
+  if (startLine === endLine) {
+    // single-line -> replace_line semantics
+    const ln = clampLine(startLine, lines.length);
+    const newLines = splitLines(replacement);
+    const updated = [...lines.slice(0, ln - 1), ...newLines, ...lines.slice(ln)];
+    result = {
+      ok: true,
+      text: joinLines(updated),
+      line: ln,
+      end_line: ln + newLines.length - 1,
+    };
+  } else {
+    let start = clampLine(startLine, lines.length);
+    let end = clampLine(endLine, lines.length);
+    if (start > end) [start, end] = [end, start];
+    const newLines = splitLines(replacement);
+    const updated = [...lines.slice(0, start - 1), ...newLines, ...lines.slice(end)];
+    result = {
+      ok: true,
+      text: joinLines(updated),
+      start_line: start,
+      end_line: start + newLines.length - 1,
+    };
+  }
+
+  return withChanged(
     {
-      "type": "function",
-      "function": {
-        "name": "replace_span",
-        "description": "Replace a character span within a single line. Use this to change part of a line without rewriting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "line": { "type": "integer", "description": "1-based line number" },
-            "start_column": { "type": "integer", "description": "First column to replace (1-based, inclusive)" },
-            "end_column": { "type": "integer", "description": "Last column to replace (1-based, inclusive)" },
-            "text": { "type": "string", "description": "Replacement text for the span" }
-          },
-          "required": ["line", "start_column", "end_column", "text"],
-          "additionalProperties": false
-        }
-      }
+      ok: true,
+      line: "line" in result ? result.line : result.start_line,
+      start_line: "start_line" in result ? result.start_line : result.line,
+      end_line: result.end_line,
+      new_text: result.text,
     },
-    {
-      "type": "function",
-      "function": {
-        "name": "delete_lines",
-        "description": "Delete one or more entire lines. start_line and end_line are 1-based and inclusive. To delete a single line, set both to that line number.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "start_line": { "type": "integer", "description": "First line to delete (1-based)" },
-            "end_line": { "type": "integer", "description": "Last line to delete (1-based, inclusive)" }
-          },
-          "required": ["start_line", "end_line"],
-          "additionalProperties": false
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "delete_span",
-        "description": "Delete a character span within a single line. Use this to remove part of a line without deleting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "line": { "type": "integer", "description": "1-based line number" },
-            "start_column": { "type": "integer", "description": "First column to delete (1-based, inclusive)" },
-            "end_column": { "type": "integer", "description": "Last column to delete (1-based, inclusive)" }
-          },
-          "required": ["line", "start_column", "end_column"],
-          "additionalProperties": false
-        }
+    text
+  );
+}
+
+function delete_range(args, ctx) {
+  // Legacy alias for delete_lines (identical Tool_Result shape).
+  return delete_lines(args, ctx);
+}
+
+// -- registry + dispatcher --
+
+const tools = {
+  get_document,
+  goto_line,
+  insert_text,
+  replace_line,
+  replace_span,
+  delete_lines,
+  delete_span,
+  replace_range,
+  delete_range,
+};
+
+async function run(args, ctx) {
+  const fn = tools[ctx.toolName];
+  if (typeof fn !== "function") {
+    return { ok: false, error: `Tool "${ctx.toolName}" has no implementation.`, changed: false };
+  }
+  return fn(args, ctx);
+}
+
+// ---- schema ----
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_document",
+      "description": "Return the document with 1-based line numbers. For large files this returns the same context window shown in the user message (lines before/after the selection); line numbers are absolute in the full file. Selected lines are marked with >>.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
       }
     }
-  ]
-}
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "goto_line",
+      "description": "Move the editor caret to the start of a line (1-based). Returns that line's text.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "1-based line number"
+          }
+        },
+        "required": [
+          "line"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insert_text",
+      "description": "Insert text at a 1-based line and column position.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "1-based line number"
+          },
+          "column": {
+            "type": "integer",
+            "description": "1-based column (default 1)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Text to insert"
+          }
+        },
+        "required": [
+          "line",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "replace_line",
+      "description": "Replace the entire content of a single line. text is the full new line content (not a substring). If text contains newlines, the line expands into multiple lines.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "1-based line number"
+          },
+          "text": {
+            "type": "string",
+            "description": "Complete replacement content for the line"
+          }
+        },
+        "required": [
+          "line",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "replace_span",
+      "description": "Replace a character span within a single line. Use this to change part of a line without rewriting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "1-based line number"
+          },
+          "start_column": {
+            "type": "integer",
+            "description": "First column to replace (1-based, inclusive)"
+          },
+          "end_column": {
+            "type": "integer",
+            "description": "Last column to replace (1-based, inclusive)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Replacement text for the span"
+          }
+        },
+        "required": [
+          "line",
+          "start_column",
+          "end_column",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_lines",
+      "description": "Delete one or more entire lines. start_line and end_line are 1-based and inclusive. To delete a single line, set both to that line number.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "start_line": {
+            "type": "integer",
+            "description": "First line to delete (1-based)"
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "Last line to delete (1-based, inclusive)"
+          }
+        },
+        "required": [
+          "start_line",
+          "end_line"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delete_span",
+      "description": "Delete a character span within a single line. Use this to remove part of a line without deleting the whole line. Columns are 1-based and inclusive. Columns past the line end extend to end-of-line (like a text editor selection).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "description": "1-based line number"
+          },
+          "start_column": {
+            "type": "integer",
+            "description": "First column to delete (1-based, inclusive)"
+          },
+          "end_column": {
+            "type": "integer",
+            "description": "Last column to delete (1-based, inclusive)"
+          }
+        },
+        "required": [
+          "line",
+          "start_column",
+          "end_column"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+]
