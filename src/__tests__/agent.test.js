@@ -144,7 +144,6 @@ describe("runAgent", () => {
     });
 
     expect(capturedMessages[0]).toEqual([
-      expect.objectContaining({ role: "system" }),
       { role: "user", content: "remove item A" },
       { role: "assistant", content: "Removed item A." },
       { role: "user", content: "put item A back" },
@@ -269,7 +268,7 @@ describe("runAgent", () => {
     expect(onAgentContext).toHaveBeenCalledWith(
       expect.objectContaining({
         userContent: "read doc",
-        systemPrompt: expect.stringContaining("context window"),
+        systemPrompt: "",
       })
     );
     expect(onAssistantToolTurn).toHaveBeenCalledWith("I'll inspect the document first.");
@@ -277,9 +276,8 @@ describe("runAgent", () => {
 });
 
 describe("agent _internal.buildSystemPrompt", () => {
-  it("appends default tool instructions to custom system prompt", () => {
+  it("returns only the custom system prompt", () => {
     const prompt = _internal.buildSystemPrompt({ system_prompt: "Be concise." });
-    expect(prompt).toContain("Be concise.");
-    expect(prompt).toContain("context window");
+    expect(prompt).toBe("Be concise.");
   });
 });

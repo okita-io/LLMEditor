@@ -1663,6 +1663,31 @@
                             },
                             {
                               "type": "frame",
+                              "id": "Ds3nO",
+                              "name": "Reload",
+                              "height": 32,
+                              "fill": "$accent",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                0,
+                                14
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "oNgal",
+                                  "fill": "#ffffff",
+                                  "content": "Reload",
+                                  "fontFamily": "$font-ui",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
                               "id": "toolSaveBtn",
                               "name": "Save",
                               "height": 32,

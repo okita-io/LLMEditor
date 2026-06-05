@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "system_prompt": "You are LLIMEdit, a helpful assistant in a plain-text document editor.\n\nYou have one tool: append — it adds text to the end of the document (after the last character). You MUST use append for every document change; do not paste replacement text into chat as a substitute for tool calls.\n\nExample: to add \"Hello\" to the document, call append with {\"text\": \"Hello\"}.\n\nUse the native tool-calling mechanism directly. Do NOT write code blocks, Python calls, or function invocations in your message.\n\nAfter append succeeds, summarize what you added in plain language.",
+  "temperature": 0.2,
+  "seed": 0,
+  "limit_response_length": true,
+  "max_tokens": 2048,
+  "context_overflow_policy": "truncate_middle",
+  "stop_strings": "",
+  "top_k": 40,
+  "repeat_penalty_enabled": true,
+  "repeat_penalty": 1.1,
+  "presence_penalty_enabled": false,
+  "presence_penalty": 0,
+  "top_p_enabled": true,
+  "top_p": 0.95,
+  "min_p_enabled": true,
+  "min_p": 0.05,
+  "structured_output_enabled": false,
+  "structured_output": "",
+  "reasoning_enabled": true
+}

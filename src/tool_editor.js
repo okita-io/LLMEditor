@@ -24,6 +24,8 @@ let implEditorEl = null;
 /** @type {HTMLInputElement | null} */
 let fileNameEl = null;
 /** @type {HTMLButtonElement | null} */
+let reloadBtnEl = null;
+/** @type {HTMLButtonElement | null} */
 let deleteBtnEl = null;
 /** @type {HTMLElement | null} */
 let schemaStatusEl = null;
@@ -207,8 +209,12 @@ function syncToolFileControls() {
       fileNameEl.value = display;
     }
   }
+  const hasPath = typeof currentToolPath === "string" && currentToolPath.length > 0;
+  if (reloadBtnEl) {
+    reloadBtnEl.disabled = !hasPath;
+  }
   if (deleteBtnEl) {
-    deleteBtnEl.disabled = !(typeof currentToolPath === "string" && currentToolPath.length > 0);
+    deleteBtnEl.disabled = !hasPath;
   }
 }
 
@@ -425,6 +431,22 @@ async function onToolLoad() {
   const picked = await invokeOpenDialog();
   if (!picked) return;
   await loadToolFile(picked);
+}
+
+async function onToolReload() {
+  if (!(typeof currentToolPath === "string" && currentToolPath.length > 0)) return;
+
+  if (toolDirty) {
+    const name = basename(currentToolPath);
+    const confirmed = await showConfirmModal(
+      "Warning",
+      `Reloading "${name}" will discard unsaved changes in the editor. Continue?`,
+      "Reload"
+    );
+    if (!confirmed) return;
+  }
+
+  await loadToolFile(currentToolPath);
 }
 
 async function onToolSave() {
@@ -810,6 +832,9 @@ function wireToolFileBar() {
   document.getElementById("tool-load")?.addEventListener("click", () => {
     onToolLoad().catch((err) => console.error("[tool_editor] load failed", err));
   });
+  document.getElementById("tool-reload")?.addEventListener("click", () => {
+    onToolReload().catch((err) => console.error("[tool_editor] reload failed", err));
+  });
   document.getElementById("tool-save")?.addEventListener("click", () => {
     onToolSave().catch((err) => console.error("[tool_editor] save failed", err));
   });
@@ -844,6 +869,9 @@ export function initToolEditor() {
   );
   fileNameEl = /** @type {HTMLInputElement | null} */ (
     document.getElementById("tool-file-name")
+  );
+  reloadBtnEl = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById("tool-reload")
   );
   deleteBtnEl = /** @type {HTMLButtonElement | null} */ (
     document.getElementById("tool-delete")
@@ -908,6 +936,7 @@ export const _internal = {
   loadToolFile,
   saveToolFileToPath,
   onToolLoad,
+  onToolReload,
   onToolSave,
   onToolSaveAs,
   onToolDelete,

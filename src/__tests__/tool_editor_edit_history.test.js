@@ -28,6 +28,7 @@ function mountToolEditorDom() {
       <div id="tool-file-bar">
         <input id="tool-file-name" />
         <button id="tool-load"></button>
+        <button id="tool-reload"></button>
         <button id="tool-save"></button>
         <button id="tool-save-as"></button>
         <button id="tool-delete"></button>

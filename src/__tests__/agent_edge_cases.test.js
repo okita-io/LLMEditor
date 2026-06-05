@@ -301,31 +301,29 @@ describe("runAgent — error propagation", () => {
 });
 
 describe("_internal.buildSystemPrompt", () => {
-  it("uses default tool system when no custom prompt", () => {
+  it("returns empty string when no custom prompt", () => {
     const prompt = _internal.buildSystemPrompt({ system_prompt: "" });
-    expect(prompt).toBe(_internal.DEFAULT_TOOL_SYSTEM);
+    expect(prompt).toBe("");
   });
 
-  it("prepends custom prompt before default tool system", () => {
+  it("returns the custom prompt unchanged", () => {
     const prompt = _internal.buildSystemPrompt({ system_prompt: "Be brief." });
-    expect(prompt.startsWith("Be brief.")).toBe(true);
-    expect(prompt).toContain(_internal.DEFAULT_TOOL_SYSTEM);
+    expect(prompt).toBe("Be brief.");
   });
 
   it("trims whitespace from custom prompt", () => {
     const prompt = _internal.buildSystemPrompt({ system_prompt: "  \n  " });
-    // Empty after trim → uses default only
-    expect(prompt).toBe(_internal.DEFAULT_TOOL_SYSTEM);
+    expect(prompt).toBe("");
   });
 
   it("handles null settings", () => {
     const prompt = _internal.buildSystemPrompt(null);
-    expect(prompt).toBe(_internal.DEFAULT_TOOL_SYSTEM);
+    expect(prompt).toBe("");
   });
 
   it("handles missing system_prompt field", () => {
     const prompt = _internal.buildSystemPrompt({});
-    expect(prompt).toBe(_internal.DEFAULT_TOOL_SYSTEM);
+    expect(prompt).toBe("");
   });
 });
 

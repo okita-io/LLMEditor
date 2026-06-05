@@ -1,0 +1,37 @@
+/**
+ * append.lmtool — minimal tutorial example
+ *
+ * One tool function receives (args, ctx) and returns a Tool_Result.
+ * ctx.text is the live document; set new_text to write it back.
+ */
+
+function append(args, ctx) {
+  const text = typeof ctx.text === "string" ? ctx.text : "";
+  const add = String(args.text ?? "");
+  const new_text = text + add;
+  return { ok: true, new_text, changed: new_text !== text };
+}
+
+const tools = { append };
+
+// ---- schema ----
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "append",
+      "description": "Append text to the end of the document (after the last character).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to append"
+          }
+        },
+        "required": ["text"],
+        "additionalProperties": false
+      }
+    }
+  }
+]

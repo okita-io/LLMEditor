@@ -26,52 +26,20 @@ import {
 const MAX_TURNS = 16;
 
 const APPLY_NUDGE =
-  "You described document changes in chat but did not apply them with tools. Use replace_line, replace_span, insert_text, delete_lines, or delete_span now to write those edits into the document. Do not send another prose-only reply until the tools have run.";
+  "You described document changes in chat but did not apply them with tools. Use the tools provided in this session to write those edits into the document. Do not send another prose-only reply until the tools have run.";
 
 const THINKING_NUDGE =
-  "You responded with text but did not call any tools. Please use the provided tools (replace_line, replace_span, insert_text, delete_lines, delete_span, get_document, goto_line) to make the requested changes now. Do not explain — just call the tools.";
-
-const DEFAULT_TOOL_SYSTEM = `You are an AI assistant editing a plain-text document in LLIMEdit.
-Use the tools loaded in the tool editor to inspect and modify the document. Line numbers are 1-based and absolute in the full file.
-Earlier user and assistant messages in this session are included for continuity; only the latest user message includes the current document excerpt.
-The user message includes a context window around their selection or caret when the document is large; lines marked with ">>" are selected.
-Call get_document when you need to re-read the current buffer (returns the same context window for large files).
-Use replace_line to rewrite an entire line, replace_span to change part of a line, insert_text for insertions, delete_lines to remove whole lines, delete_span to remove part of a line (1-based inclusive columns; columns past end-of-line extend to the line end), and goto_line to inspect a specific line.
-You MUST apply every document change with tools before your final reply. Do not paste JSON patches, outline snippets, or replacement text in chat as a substitute for tool calls — the chat panel is not the document.
-After tools succeed, summarize briefly in plain language only. If you proposed new sections (e.g. build-up, threshold), insert them with insert_text or replace_line.
-
-TOOL CALL EXAMPLES:
-
-To replace line 3 with new content:
-  → call replace_line with {"line": 3, "text": "This is the new line content."}
-
-To insert two new lines after line 10 (inserts at line 11, column 1):
-  → call insert_text with {"line": 11, "column": 1, "text": "First new line\\nSecond new line\\n"}
-
-To delete lines 5 through 7:
-  → call delete_lines with {"start_line": 5, "end_line": 7}
-
-To change "foo" to "bar" on line 4 (columns 10-12):
-  → call replace_span with {"line": 4, "start_column": 10, "end_column": 12, "text": "bar"}
-
-To add content after the last line of the document (e.g. line 38):
-  → call insert_text with {"line": 38, "column": 1, "text": "\\nnew content here"}
-
-IMPORTANT: Use the tool calling mechanism directly. Do NOT write code blocks, Python calls, or function invocations in your message. Call the tools through the API.`;
+  "You responded with text but did not call any tools. Please use the provided tools to make the requested changes now. Do not explain — just call the tools.";
 
 /**
  * @param {object} settings
  * @returns {string}
  */
 function buildSystemPrompt(settings) {
-  const custom =
-    settings && typeof settings.system_prompt === "string"
-      ? settings.system_prompt.trim()
-      : "";
-  if (custom.length > 0) {
-    return `${custom}\n\n${DEFAULT_TOOL_SYSTEM}`;
+  if (settings && typeof settings.system_prompt === "string") {
+    return settings.system_prompt.trim();
   }
-  return DEFAULT_TOOL_SYSTEM;
+  return "";
 }
 
 /**
@@ -106,14 +74,6 @@ function parseToolArguments(args) {
  * @property {(bufferEl: HTMLTextAreaElement, name: string, result: Record<string, unknown>) => void} [applyMutatingResult]
  * @property {(text: string) => void} [onUnappliedEditsHint]
  */
-
-const MUTATING_TOOLS = new Set([
-  "insert_text",
-  "replace_line",
-  "replace_span",
-  "delete_lines",
-  "delete_span",
-]);
 
 /**
  * @typedef {object} RunAgentOptions
@@ -245,17 +205,19 @@ export async function runAgent(options) {
 
   const priorTurns = Array.isArray(options.priorTurns) ? options.priorTurns : [];
 
+  const systemPrompt = buildSystemPrompt(settings);
+
   /** @type {Array<Record<string, unknown>>} */
   const messages = [
-    { role: "system", content: buildSystemPrompt(settings) },
+    ...(systemPrompt.length > 0
+      ? [{ role: "system", content: systemPrompt }]
+      : []),
     ...priorTurns.map((turn) => ({
       role: turn.role,
       content: turn.content,
     })),
     { role: "user", content: userContent },
   ];
-
-  const systemPrompt = buildSystemPrompt(settings);
   const initialRequestBody = buildAgentRequestPreview(settings, messages, getAgentToolSchemas());
 
   callbacks.onAgentContext?.({
@@ -393,11 +355,7 @@ export async function runAgent(options) {
           };
         }
 
-        if (
-          result.ok === true &&
-          result.changed !== false &&
-          (MUTATING_TOOLS.has(toolCall.name) || isUserCustomTool(toolCall.name))
-        ) {
+        if (result.ok === true && result.changed === true) {
           mutatingToolCount += 1;
         }
 
@@ -462,7 +420,6 @@ export async function runAgent(options) {
 export const _internal = {
   buildSystemPrompt,
   MAX_TURNS,
-  DEFAULT_TOOL_SYSTEM,
   resolveLiveContextWindow,
   parseAgentTurnEnvelope,
 };

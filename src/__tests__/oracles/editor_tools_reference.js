@@ -51,6 +51,24 @@ function clampLine(line, totalLines) {
   return Math.min(Math.max(1, n), max);
 }
 
+function ensureLine(lines, line) {
+  const n = Number.isFinite(line) ? Math.trunc(line) : 1;
+  const ln = Math.max(1, n);
+  while (lines.length < ln) {
+    lines.push("");
+  }
+  return ln;
+}
+
+function resolveInsertLine(lines, lineArg) {
+  const hasLine = lineArg !== undefined && lineArg !== null && lineArg !== "";
+  if (!hasLine) {
+    lines.push("");
+    return lines.length;
+  }
+  return ensureLine(lines, Number(lineArg));
+}
+
 /**
  * @param {string} text
  * @param {string|null} [path]
@@ -105,7 +123,7 @@ export function gotoLine(text, line) {
  */
 export function insertText(text, line, column, insertText) {
   const lines = splitLines(text);
-  const ln = clampLine(line, lines.length);
+  const ln = resolveInsertLine(lines, line);
   const col = Number.isFinite(column) ? Math.max(1, Math.trunc(column)) : 1;
   const insert = typeof insertText === "string" ? insertText : "";
   const current = lines[ln - 1] ?? "";
@@ -338,7 +356,7 @@ export function executeTool(name, args, ctx) {
     case "insert_text": {
       const result = insertText(
         text,
-        Number(args.line ?? 1),
+        args.line,
         Number(args.column ?? 1),
         String(args.text ?? "")
       );

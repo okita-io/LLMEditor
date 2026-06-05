@@ -30,6 +30,24 @@ function clampLine(line, totalLines) {
   return Math.min(Math.max(1, n), max);
 }
 
+function ensureLine(lines, line) {
+  const n = Number.isFinite(line) ? Math.trunc(line) : 1;
+  const ln = Math.max(1, n);
+  while (lines.length < ln) {
+    lines.push("");
+  }
+  return ln;
+}
+
+function resolveInsertLine(lines, lineArg) {
+  const hasLine = lineArg !== undefined && lineArg !== null && lineArg !== "";
+  if (!hasLine) {
+    lines.push("");
+    return lines.length;
+  }
+  return ensureLine(lines, Number(lineArg));
+}
+
 function normalizeColumn(column) {
   const n = Number.isFinite(column) ? Math.trunc(column) : 1;
   return Math.max(1, n);
@@ -113,7 +131,7 @@ function goto_line(args, ctx) {
 function insert_text(args, ctx) {
   const text = typeof ctx.text === "string" ? ctx.text : "";
   const lines = splitLines(text);
-  const ln = clampLine(Number(args.line ?? 1), lines.length);
+  const ln = resolveInsertLine(lines, args.line);
   const column = Number(args.column ?? 1);
   const col = Number.isFinite(column) ? Math.max(1, Math.trunc(column)) : 1;
   const insert = String(args.text ?? "");
@@ -253,7 +271,7 @@ function delete_range(args, ctx) {
 }
 
 function test_function(value) {
-  return;
+  return value;
 }
 
 // -- registry + dispatcher --

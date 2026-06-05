@@ -169,21 +169,28 @@ Save your own tools from the tool editor bar (**Load** / **Save** / **Save as…
 
 The **system prompt** and the rest of the inference controls live in the inference panel. Edits auto-save to app settings; use the preset row (**Load** / **Save** / **Save as…** / **Delete**) for named snapshots. External `.prompt` files use the same JSON shape (`format_version: 1`) if you maintain them outside the app.
 
-[`default.prompt`](default.prompt) is the repo starter — a writing-assistant persona plus default sampling settings. Mirror it into the panel or a preset when you are learning the app. You can edit the JSON by hand: when `structured_output_enabled` is `false`, keep `structured_output` as `""`.
-
-Whatever you type is prepended (when non-empty) to a built-in block in [`src/agent.js`](src/agent.js) (`DEFAULT_TOOL_SYSTEM`) that explains line numbers, `>>` selection markers, and that edits must go through tool calls.
+The agent sends **only** what you write in `system_prompt` — there is no hidden append from [`src/agent.js`](src/agent.js). Tool schemas are attached separately on the wire, but the model still needs your prompt to explain what each tool does and when to call it. If you load tools without describing them, the LLM may not use them correctly; that is intentional — fine-tuning prompts and tools together is the point of the sandbox.
 
 Tips:
 
-- **Steer persona and policy** in your prompt; the exact tool names come from whatever file you loaded in the tool editor.
+- **Pair each tool file with a prompt** that names the tools, their arguments, and your editing policy.
 - **Prefer plain text or Markdown** for behavioural guidance.
 - **Do not** instruct the model to emit JSON tool calls in `content`; use native `tool_calls`.
 
-### `default.prompt` (starter, not bundled)
+### Paired examples (starter files, not bundled)
+
+| Tool file | Prompt file | Purpose |
+|-----------|-------------|---------|
+| [`append.lmtool`](append.lmtool) | [`append.prompt`](append.prompt) | Minimal tutorial — one `append` tool plus a matching system prompt |
+| [`default.lmtools`](default.lmtools) | [`default.prompt`](default.prompt) | Full document-edit toolkit plus a writing-assistant persona |
+
+Load the tool file in the tool editor and the matching `.prompt` into the inference panel (or save both as presets). You can edit the JSON by hand: when `structured_output_enabled` is `false`, keep `structured_output` as `""`.
+
+### `.prompt` file shape
 
 JSON with `format_version: 1` and snake_case keys matching the inference panel: `system_prompt`, `temperature`, `seed`, `limit_response_length`, `max_tokens`, `context_overflow_policy` (`truncate_middle` | `rolling_window` | `stop_at_limit`), `stop_strings`, `top_k`, repeat/presence/top-p/min-p toggles and values, `structured_output_enabled`, `structured_output`, and `reasoning_enabled`.
 
-See [`default.prompt`](default.prompt) for the full starter file.
+See [`default.prompt`](default.prompt) or [`append.prompt`](append.prompt) for full starter files.
 
 ---
 
@@ -191,8 +198,10 @@ See [`default.prompt`](default.prompt) for the full starter file.
 
 ```
 LLMEditor/
+├── append.lmtool            # Minimal tutorial tool (one append function)
+├── append.prompt            # Matching inference JSON for append.lmtool
 ├── default.lmtools          # Starter document tools (load via tool editor)
-├── default.prompt           # Starter inference JSON (reference / hand import)
+├── default.prompt           # Matching inference JSON for default.lmtools
 ├── src/
 │   ├── tool_editor.js       # .lmtool editor + tool execution
 │   ├── tool_code_highlight.js

@@ -21,6 +21,7 @@ function mountToolEditorDom() {
       <div id="tool-file-bar">
         <input id="tool-file-name" />
         <button id="tool-load"></button>
+        <button id="tool-reload"></button>
         <button id="tool-save"></button>
         <button id="tool-save-as"></button>
         <button id="tool-delete"></button>
@@ -168,6 +169,95 @@ describe("tool_editor", () => {
       "/tmp/new-tools.lmtool",
       expect.stringContaining("// ---- schema ----")
     );
+  });
+
+  it("reloads the current tool file from disk when the editor is clean", async () => {
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { ok: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+    await _internal.loadToolFile("/tmp/greeting-tools.lmtool");
+    expect(_internal.isToolDirty()).toBe(false);
+
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { reloaded: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+
+    await _internal.onToolReload();
+
+    expect(api.openFile).toHaveBeenLastCalledWith("/tmp/greeting-tools.lmtool");
+    expect(document.getElementById("tool-impl-editor").value).toContain("reloaded: true");
+    expect(_internal.isToolDirty()).toBe(false);
+  });
+
+  it("reload confirms before discarding unsaved editor changes", async () => {
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { ok: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+    await _internal.loadToolFile("/tmp/greeting-tools.lmtool");
+    const implEditor = document.getElementById("tool-impl-editor");
+    implEditor.value += "\n// unsaved";
+    implEditor.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const reloadPromise = _internal.onToolReload();
+    await vi.waitFor(() => {
+      const modal = document.getElementById("inference-confirm-modal");
+      expect(modal).not.toBeNull();
+      expect(modal.hidden).toBe(false);
+    });
+    document.getElementById("inference-confirm-modal").querySelector('[data-action="cancel"]').click();
+    await reloadPromise;
+
+    expect(api.openFile).toHaveBeenCalledTimes(1);
+    expect(document.getElementById("tool-impl-editor").value).toContain("unsaved");
+  });
+
+  it("reload applies external file changes after confirming discard", async () => {
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { ok: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+    await _internal.loadToolFile("/tmp/greeting-tools.lmtool");
+
+    const implEditor = document.getElementById("tool-impl-editor");
+    implEditor.value += "\n// unsaved";
+    implEditor.dispatchEvent(new Event("input", { bubbles: true }));
+
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { reloaded: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+
+    const reloadPromise = _internal.onToolReload();
+    await vi.waitFor(() => {
+      const modal = document.getElementById("inference-confirm-modal");
+      expect(modal).not.toBeNull();
+      expect(modal.hidden).toBe(false);
+    });
+    document.getElementById("inference-confirm-modal").querySelector('[data-action="confirm"]').click();
+    await reloadPromise;
+
+    expect(api.openFile).toHaveBeenLastCalledWith("/tmp/greeting-tools.lmtool");
+    expect(document.getElementById("tool-impl-editor").value).toContain("reloaded: true");
+    expect(document.getElementById("tool-impl-editor").value).not.toContain("unsaved");
+    expect(_internal.isToolDirty()).toBe(false);
   });
 
   it("delete clears panes after confirmation", async () => {

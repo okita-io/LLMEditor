@@ -21,7 +21,10 @@ describe("default.prompt", () => {
     const settings = parsed.settings;
     expect(settings.format_version).toBeUndefined();
     expect(settings.system_prompt).toContain("LLIMEdit");
-    expect(settings.system_prompt).toContain("tool");
+    expect(settings.system_prompt).toContain("get_document");
+    expect(settings.system_prompt).toContain("replace_line");
+    expect(settings.system_prompt).toContain("insert_text");
+    expect(settings.system_prompt).toContain("delete_lines");
     expect(settings.temperature).toBe(0.2);
     expect(settings.seed).toBe(0);
     expect(settings.limit_response_length).toBe(true);
