@@ -66,13 +66,13 @@ The chat column uses color-coded bubbles so you can scan a long agent run. Theme
 ### Setup and run
 
 ```bash
-git clone https://github.com/your-org/LLMEditor.git
+git clone https://github.com/okita.io/LLMEditor.git
 cd LLMEditor
 npm install
 npm run dev
 ```
 
-`npm run dev` kills stale dev processes, starts a Python static server for `src/` on port 1420, then launches Tauri pointed at `http://127.0.0.1:1420`. If the window is blank or you see a port-bind error, run `npm run dev:clean` first, then `npm run dev` again.
+`npm run dev` kills stale dev processes, starts a no-cache Python static server for `src/` on port 1420, then launches Tauri pointed at `http://127.0.0.1:1420`. The dev server sends `Cache-Control: no-store` and never returns `304 Not Modified`, so the macOS WebView does not keep stale ES modules (old `agent.js`, layout glitches that a manual reload used to fix, etc.). If the window is blank or you see a port-bind error, run `npm run dev:clean` first, then `npm run dev` again.
 
 Point **Settings → API URL** at your LM Studio server (default `http://localhost:1234/v1/chat/completions`). Use a model with native tool use (e.g. Qwen2.5-Instruct, Llama 3.1+).
 

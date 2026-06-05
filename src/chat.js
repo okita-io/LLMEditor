@@ -693,6 +693,7 @@ export function appendAgentContext(payload) {
     appendLogSection(bubble, "Chat history (prior turns)", priorTurnsSummary);
   }
   if (typeof systemPrompt === "string" && systemPrompt.length > 0) {
+    console.log("systemPrompt", systemPrompt);
     appendLogSection(bubble, "System prompt", systemPrompt);
   }
   appendLogSection(
