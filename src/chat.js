@@ -14,10 +14,14 @@ let inputEl = null;
 let sendBtn = null;
 let stopBtn = null;
 let clearBtn = null;
-/** @type {HTMLSelectElement | null} */
-let modelPickerEl = null;
+/** @type {HTMLElement | null} */
+let modelLabelEl = null;
+/** @type {string} */
+let currentModelName = "";
 /** @type {HTMLElement | null} */
 let tokenCountEl = null;
+/** @type {HTMLElement | null} */
+let contextLengthEl = null;
 /** @type {HTMLElement | null} */
 let visionIconEl = null;
 /** @type {HTMLElement | null} */
@@ -45,13 +49,14 @@ let pendingUserBubble = null;
 
 /**
  * Capability metadata for every model the picker knows about, keyed by
- * the model id from the server. Populated by `loadModelList()` from
+ * the model id from the server. Populated by `refreshModelMetadata()` from
  * `api.listModelsDetailed`; missing entries fall back to the empty
  * capability shape so a server that only speaks OpenAI-compat still
  * renders the icons as muted rather than throwing.
  *
  * @type {Map<string, {
  *   loaded: boolean,
+ *   context_length: number | null,
  *   capabilities: {
  *     vision: boolean,
  *     tool_use: boolean,
@@ -85,6 +90,33 @@ function updateTokenCount() {
   if (!tokenCountEl) return;
   const tokens = estimateContextTokens();
   tokenCountEl.textContent = `${tokens.toLocaleString()} Tokens`;
+}
+
+/**
+ * @returns {string}
+ */
+function currentModelId() {
+  return currentModelName;
+}
+
+/**
+ * Update the context-length indicator for the active model.
+ *
+ * @param {string} modelId
+ * @returns {void}
+ */
+function updateContextLengthDisplay(modelId) {
+  if (!contextLengthEl) return;
+  const entry =
+    typeof modelId === "string" && modelId.length > 0
+      ? modelCapabilityCache.get(modelId)
+      : null;
+  const len = entry?.context_length;
+  if (typeof len === "number" && len > 0) {
+    contextLengthEl.textContent = `Context Length: ${len.toLocaleString()}`;
+  } else {
+    contextLengthEl.textContent = "Context Length: —";
+  }
 }
 
 /**
@@ -216,7 +248,7 @@ async function refreshCapabilityIcons(modelId) {
  */
 async function onReasoningIconClick() {
   if (!reasoningIconEl || reasoningIconEl.disabled) return;
-  const modelId = modelPickerEl?.value ?? "";
+  const modelId = currentModelId();
   const caps = capabilitiesFor(modelId);
   if (caps.reasoning === null || !caps.reasoning.allowed_options.includes("off")) {
     return;
@@ -377,9 +409,8 @@ function applyLlmRequestUi(state) {
   if (sendBtn) sendBtn.disabled = chatBusy;
   if (clearBtn) clearBtn.disabled = chatBusy;
   if (stopBtn) stopBtn.disabled = !stopEnabled;
-  if (modelPickerEl) {
-    modelPickerEl.disabled = chatBusy;
-    modelPickerEl.classList.toggle("streaming", chatBusy);
+  if (modelLabelEl) {
+    modelLabelEl.classList.toggle("streaming", chatBusy);
   }
 }
 
@@ -392,111 +423,47 @@ function setStreamingUi(streaming) {
 }
 
 /**
- * @param {string[]} modelIds
- * @param {string} [selectedModel]
- * @returns {void}
- */
-function populateModelPicker(modelIds, selectedModel) {
-  if (!modelPickerEl) return;
-
-  const selected =
-    typeof selectedModel === "string" && selectedModel.length > 0 ? selectedModel : "";
-  const ids = Array.isArray(modelIds) ? modelIds.slice() : [];
-
-  if (selected.length > 0 && !ids.includes(selected)) {
-    ids.unshift(selected);
-  }
-
-  modelPickerEl.replaceChildren();
-
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "(no model)";
-  modelPickerEl.appendChild(placeholder);
-
-  for (const id of ids) {
-    const opt = document.createElement("option");
-    opt.value = id;
-    opt.textContent = id;
-    modelPickerEl.appendChild(opt);
-  }
-
-  modelPickerEl.value = selected.length > 0 && ids.includes(selected) ? selected : "";
-}
-
-/**
+ * @param {boolean} [force]
  * @returns {Promise<void>}
  */
-async function loadModelList() {
-  if (modelListLoaded || modelListLoading || !modelPickerEl) return;
+async function refreshModelMetadata(force = false) {
+  if (modelListLoading || (!force && modelListLoaded)) return;
   modelListLoading = true;
 
   try {
     const settings = await api.loadSettings();
-    const currentModel =
-      typeof settings?.model === "string" ? settings.model : modelPickerEl.value;
+    const modelId = currentModelId();
 
-    // Prefer the detailed endpoint so we can populate capability icons.
-    // If LM Studio is on an older build (no native endpoint) we fall back
-    // to bare ids; the icons remain in their muted/unsupported state.
-    let modelIds = [];
     try {
       const detailed = await api.listModelsDetailed(settings.api_url);
       modelCapabilityCache.clear();
-      const loadedOnly = [];
       for (const m of detailed) {
         modelCapabilityCache.set(m.id, {
           loaded: m.loaded === true,
+          context_length:
+            typeof m.context_length === "number" && m.context_length > 0
+              ? m.context_length
+              : null,
           capabilities: m.capabilities ?? {
             vision: false,
             tool_use: false,
             reasoning: null,
           },
         });
-        if (m.loaded === true) loadedOnly.push(m.id);
       }
-      // Loaded models are the only ones usable for inference; fall back
-      // to the full set when nothing is loaded so the user can still see
-      // what's downloaded.
-      modelIds = loadedOnly.length > 0 ? loadedOnly : detailed.map((m) => m.id);
     } catch {
-      modelIds = await api.listModels(settings.api_url);
+      /* keep prior cache; capability icons fall back to muted state */
     }
-    populateModelPicker(modelIds, currentModel);
+
     modelListLoaded = true;
-    await refreshCapabilityIcons(modelPickerEl.value);
+    await refreshCapabilityIcons(modelId);
+    updateContextLengthDisplay(modelId);
   } catch {
-    const current = modelPickerEl.value;
-    if (current.length > 0) {
-      populateModelPicker([current], current);
-    }
-    await refreshCapabilityIcons(modelPickerEl?.value ?? "");
+    await refreshCapabilityIcons(currentModelId());
+    updateContextLengthDisplay(currentModelId());
   } finally {
     modelListLoading = false;
   }
-}
-
-/**
- * @returns {Promise<void>}
- */
-async function onModelPickerChange() {
-  if (!modelPickerEl) return;
-
-  const model = modelPickerEl.value;
-  try {
-    const settings = await api.loadSettings();
-    await api.saveSettings({ ...settings, model });
-    if (typeof document !== "undefined" && typeof CustomEvent === "function") {
-      document.dispatchEvent(
-        new CustomEvent("settings:model-changed", {
-          detail: { model },
-        })
-      );
-    }
-  } catch {
-    /* keep picker value; save failure is silent in chat UI */
-  }
-  await refreshCapabilityIcons(model);
 }
 
 /**
@@ -504,13 +471,12 @@ async function onModelPickerChange() {
  * @returns {void}
  */
 export function setModelName(model) {
-  if (!modelPickerEl) return;
   const name = typeof model === "string" && model.length > 0 ? model : "";
-  if (name.length > 0) {
-    populateModelPicker([name], name);
-  } else {
-    populateModelPicker([], "");
+  currentModelName = name;
+  if (modelLabelEl) {
+    modelLabelEl.textContent = name.length > 0 ? name : "(no model)";
   }
+  void refreshModelMetadata(true);
 }
 
 /**
@@ -1050,8 +1016,9 @@ export function initializeChat() {
   sendBtn = document.getElementById("chat-send");
   stopBtn = document.getElementById("chat-stop");
   clearBtn = document.getElementById("chat-clear");
-  modelPickerEl = document.getElementById("chat-model-picker");
+  modelLabelEl = document.getElementById("chat-model-label");
   tokenCountEl = document.getElementById("chat-token-count");
+  contextLengthEl = document.getElementById("chat-context-length");
   visionIconEl = document.getElementById("chat-cap-vision");
   toolsIconEl = document.getElementById("chat-cap-tools");
   reasoningIconEl = /** @type {HTMLButtonElement | null} */ (
@@ -1062,19 +1029,6 @@ export function initializeChat() {
     reasoningIconEl.dataset.chatBound = "1";
     reasoningIconEl.addEventListener("click", () => {
       void onReasoningIconClick();
-    });
-  }
-
-  if (modelPickerEl && !modelPickerEl.dataset.chatBound) {
-    modelPickerEl.dataset.chatBound = "1";
-    modelPickerEl.addEventListener("focus", () => {
-      void loadModelList();
-    });
-    modelPickerEl.addEventListener("mousedown", () => {
-      void loadModelList();
-    });
-    modelPickerEl.addEventListener("change", () => {
-      void onModelPickerChange();
     });
   }
 
@@ -1120,11 +1074,21 @@ export function initializeChat() {
         detail && typeof detail === "object" ? /** @type {object} */ (detail) : {}
       );
     });
-    document.addEventListener("settings:model-changed", () => {
-      void refreshCapabilityIcons(modelPickerEl?.value ?? "");
+    document.addEventListener("settings:model-changed", (event) => {
+      const detail =
+        event && typeof event === "object" && "detail" in event ? event.detail : null;
+      const model =
+        detail && typeof detail === "object" && typeof detail.model === "string"
+          ? detail.model
+          : currentModelId();
+      if (model !== currentModelId()) {
+        setModelName(model);
+        return;
+      }
+      void refreshModelMetadata(true);
     });
     document.addEventListener("settings:inference-changed", () => {
-      void refreshCapabilityIcons(modelPickerEl?.value ?? "");
+      void refreshCapabilityIcons(currentModelId());
     });
 
     document.addEventListener("editor:chat-start", (event) => {
@@ -1137,7 +1101,7 @@ export function initializeChat() {
       const model =
         detail && typeof detail === "object" && typeof detail.model === "string"
           ? detail.model
-          : modelPickerEl?.value ?? "";
+          : currentModelId();
       activeRequestModel = model;
       if (text.length > 0) appendUserMessage(text);
       activeAssistantBody = null;
@@ -1154,7 +1118,7 @@ export function initializeChat() {
       const model =
         detail && typeof detail === "object" && typeof detail.model === "string"
           ? detail.model
-          : modelPickerEl?.value ?? "";
+          : currentModelId();
       activeRequestModel = model;
       if (pendingUserBubble && text.length > 0) {
         clearUserBubbleFailure(pendingUserBubble);

@@ -196,6 +196,7 @@ export async function listModels(apiUrl) {
  * @typedef {{
  *   id: string,
  *   loaded: boolean,
+ *   context_length?: number | null,
  *   capabilities: {
  *     vision: boolean,
  *     tool_use: boolean,

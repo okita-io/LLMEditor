@@ -805,26 +805,19 @@ body {
   min-height: 32px;
 }
 
-.chat-model-picker {
+.chat-model-label {
   flex: 1 1 auto;
   max-width: 300px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--accent);
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  cursor: pointer;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-model-picker:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.chat-model-picker.streaming {
+.chat-model-label.streaming {
   color: var(--warning);
 }
 
@@ -901,7 +894,8 @@ button.chat-cap-icon:disabled {
   min-width: 0;
 }
 
-.chat-token-count {
+.chat-token-count,
+.chat-context-length {
   flex: 0 0 auto;
   font-family: var(--font-ui);
   font-size: 12px;

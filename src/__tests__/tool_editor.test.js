@@ -120,6 +120,35 @@ describe("tool_editor", () => {
     expect(_internal.getCurrentToolPath()).toBe("/tmp/greeting-tools.lmtool");
   });
 
+  it("refreshes syntax highlight overlays when a tool file is loaded", async () => {
+    vi.mocked(api.openFile).mockResolvedValue(
+      JSON.stringify({
+        version: 1,
+        implementation: "async function run(args) { return { ok: true }; }",
+        schema: SAMPLE_SCHEMA,
+      })
+    );
+
+    const implCode = document
+      .getElementById("tool-impl-editor")
+      ?.closest(".tool-code-wrap")
+      ?.querySelector("code");
+    const schemaCode = document
+      .getElementById("tool-schema-editor")
+      ?.closest(".tool-code-wrap")
+      ?.querySelector("code");
+
+    expect(implCode?.textContent ?? "").not.toContain("async function run");
+
+    await _internal.loadToolFile("/tmp/greeting-tools.lmtool");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(implCode?.textContent).toContain("async function run");
+    expect(implCode?.innerHTML).toContain("hl-keyword");
+    expect(schemaCode?.textContent).toContain('"greet"');
+    expect(schemaCode?.innerHTML).toContain("hl-key");
+  });
+
   it("save as confirms overwrite when file already exists", async () => {
     vi.mocked(api.openFile).mockImplementation(async (path) => {
       if (path === "/tmp/new-tools.lmtool") return "existing";

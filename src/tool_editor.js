@@ -340,6 +340,7 @@ function applyToolFileContents(contents) {
   schemaEditHistory?.clear();
   revalidateSchema();
   clearToolDirty();
+  scheduleToolEditorPaneRefresh();
 }
 
 async function pathExists(path) {
@@ -471,6 +472,7 @@ async function onToolDelete() {
   revalidateSchema();
   clearToolDirty();
   syncToolFileControls();
+  scheduleToolEditorPaneRefresh();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -672,6 +674,25 @@ export function ensureToolEditorLayout() {
   docBufferPaneEl.style.flex = "1 1 auto";
   docBufferPaneEl.style.height = "";
   docBufferPaneEl.style.minHeight = "0";
+}
+
+/**
+ * Re-run flex layout and refresh syntax-highlight overlays after programmatic
+ * textarea updates (load/delete) or when a native dialog has left stale sizes.
+ *
+ * @returns {void}
+ */
+function refreshToolEditorPanes() {
+  ensureToolEditorLayout();
+  notifyEditorDisplayRefresh();
+}
+
+/**
+ * @returns {void}
+ */
+function scheduleToolEditorPaneRefresh() {
+  refreshToolEditorPanes();
+  requestAnimationFrame(() => refreshToolEditorPanes());
 }
 
 function notifyPaneLayoutChanged() {
@@ -919,6 +940,7 @@ export const _internal = {
     if (implEditorEl) implEditorEl.value = "";
     revalidateSchema();
     syncToolFileControls();
+    scheduleToolEditorPaneRefresh();
   },
   /**
    * Load tool implementation + schema without file I/O (tests only).
@@ -938,5 +960,6 @@ export const _internal = {
     implEditHistory?.clear();
     schemaEditHistory?.clear();
     applySchemaFromRaw(schemaRaw);
+    scheduleToolEditorPaneRefresh();
   },
 };

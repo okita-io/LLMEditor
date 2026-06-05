@@ -523,6 +523,9 @@ pub struct ModelCapabilities {
 pub struct ModelInfo {
     pub id: String,
     pub loaded: bool,
+    /// Active loaded context length when available, otherwise the model's
+    /// `max_context_length` from the native `/api/v1/models` response.
+    pub context_length: Option<u32>,
     pub capabilities: ModelCapabilities,
 }
 
@@ -732,6 +735,7 @@ fn parse_detailed_models(body: &serde_json::Value) -> Vec<ModelInfo> {
         out.push(ModelInfo {
             id,
             loaded,
+            context_length: parse_model_context_length(entry),
             capabilities: ModelCapabilities {
                 vision,
                 tool_use,
@@ -742,6 +746,34 @@ fn parse_detailed_models(body: &serde_json::Value) -> Vec<ModelInfo> {
 
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+/// Extract the effective context length for a model entry.
+///
+/// Prefers the active `loaded_instances[0].config.context_length` when the
+/// model is loaded, otherwise falls back to `max_context_length`.
+fn parse_model_context_length(entry: &serde_json::Value) -> Option<u32> {
+    if let Some(instances) = entry.get("loaded_instances").and_then(|v| v.as_array()) {
+        if let Some(first) = instances.first() {
+            if let Some(len) = first
+                .get("config")
+                .and_then(|c| c.get("context_length"))
+                .and_then(|v| v.as_u64())
+            {
+                if let Ok(n) = u32::try_from(len) {
+                    if n > 0 {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+    }
+
+    entry
+        .get("max_context_length")
+        .and_then(|v| v.as_u64())
+        .and_then(|len| u32::try_from(len).ok())
+        .filter(|&n| n > 0)
 }
 
 /// Fetch models from a URL and parse the response.
@@ -859,6 +891,39 @@ mod tests {
         let r = qwen.capabilities.reasoning.as_ref().unwrap();
         assert_eq!(r.allowed_options, vec!["off".to_string(), "on".to_string()]);
         assert_eq!(r.default.as_deref(), Some("on"));
+    }
+
+    #[test]
+    fn parse_detailed_models_extracts_context_length_from_loaded_config() {
+        let body = json!({
+            "models": [{
+                "type": "llm",
+                "key": "gemma-3",
+                "loaded_instances": [{
+                    "id": "gemma-3",
+                    "config": { "context_length": 4096 }
+                }],
+                "max_context_length": 32768,
+                "capabilities": { "vision": false, "trained_for_tool_use": false }
+            }]
+        });
+        let models = parse_detailed_models(&body);
+        assert_eq!(models[0].context_length, Some(4096));
+    }
+
+    #[test]
+    fn parse_detailed_models_falls_back_to_max_context_length() {
+        let body = json!({
+            "models": [{
+                "type": "llm",
+                "key": "deepseek-r1",
+                "loaded_instances": [],
+                "max_context_length": 131072,
+                "capabilities": { "vision": false, "trained_for_tool_use": true }
+            }]
+        });
+        let models = parse_detailed_models(&body);
+        assert_eq!(models[0].context_length, Some(131072));
     }
 
     #[test]

@@ -51,9 +51,7 @@
               spellcheck="false"
             ></textarea>
             <div class="chat-send-bar">
-              <select id="chat-model-picker" class="chat-model-picker" aria-label="Model">
-                <option value="">(no model)</option>
-              </select>
+              <span id="chat-model-label" class="chat-model-label" aria-label="Model">(no model)</span>
               <div id="chat-capability-icons" class="chat-capability-icons" aria-label="Model capabilities">
                 <span
                   id="chat-cap-vision"
@@ -107,6 +105,7 @@
               <button id="chat-clear" type="button">Clear</button>
               <span id="chat-token-count" class="chat-token-count">0 Tokens</span>
             </div>
+            <span id="chat-context-length" class="chat-context-length">Context Length: —</span>
             <button id="chat-stop" type="button" disabled>Stop</button>
           </div>
         </div>

@@ -33,9 +33,8 @@ export function setupChatHarness(initialValue = "") {
       <div class="chat-input-area">
         <textarea id="chat-input" rows="3"></textarea>
         <div class="chat-send-bar">
-          <select id="chat-model-picker" aria-label="Model">
-            <option value="">(no model)</option>
-          </select>
+          <span id="chat-model-label" class="chat-model-label" aria-label="Model">(no model)</span>
+          <span id="chat-context-length" class="chat-context-length">Context Length: —</span>
           <span id="chat-token-count"></span>
           <button id="chat-cap-vision" type="button" data-state="unsupported"></button>
           <button id="chat-cap-tools" type="button" data-state="unsupported"></button>
