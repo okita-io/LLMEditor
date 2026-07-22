@@ -1368,13 +1368,13 @@ button.chat-cap-icon:disabled {
 #tool-editor-pane {
   /* Shrink when #document-editor is shorter than file bar + editors + console. */
   flex: 0 1 auto;
-  /* designs/LLIMEdit-design.pen — toolEdPane height: 400 */
-  height: 400px;
+  /* designs/LLIMEdit-design.pen — toolEdPane height: 396 */
+  height: 396px;
   max-height: 100%;
   /* File bar | impl/schema (flex) | console (fixed 76px). */
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) 76px;
-  min-height: 400px;
+  min-height: 396px;
   min-width: 0;
   overflow: hidden;
 }

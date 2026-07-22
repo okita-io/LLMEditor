@@ -270,10 +270,6 @@ function delete_range(args, ctx) {
   return delete_lines(args, ctx);
 }
 
-function test_function(value) {
-  return value;
-}
-
 // -- registry + dispatcher --
 
 const tools = {
@@ -286,7 +282,6 @@ const tools = {
   delete_span,
   replace_range,
   delete_range,
-  test_function,
 };
 
 async function run(args, ctx) {
@@ -299,18 +294,6 @@ async function run(args, ctx) {
 
 // ---- schema ----
 [
-  {
-    "type": "function",
-    "function": {
-      "name": "test_function",
-      "description": "test.",
-      "parameters": {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-      }
-    }
-  },
   {
     "type": "function",
     "function": {
